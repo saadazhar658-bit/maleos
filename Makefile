@@ -39,9 +39,10 @@ GRUB_MKRESCUE ?= grub-mkrescue
 
 CFLAGS  := -std=c11 -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone \
            -mcmodel=kernel -mno-mmx -mno-sse -mno-sse2 \
+           -fno-tree-loop-distribute-patterns \
            -Wall -Wextra -Werror -O2 -g -Isrc/include
 ASFLAGS := -f elf64 -g -F dwarf
-LDFLAGS := -n -nostdlib -z max-page-size=0x1000 -T linker.ld
+LDFLAGS := -n -nostdlib -z noexecstack -z max-page-size=0x1000 -T linker.ld
 
 C_SRCS   := $(shell find src -name '*.c' 2>/dev/null)
 ASM_SRCS := $(shell find src -name '*.asm' 2>/dev/null)

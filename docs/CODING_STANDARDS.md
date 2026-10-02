@@ -52,3 +52,4 @@ These rules keep the kernel readable, portable, and safe. Formatting is enforced
 
 - `make test` must pass. It boots the ISO headless and checks the serial output.
 - New subsystems should print a clear status line to the serial log when they initialize.
+- Memory-management changes must keep `mm_selftest()` green; add checks for new behavior.

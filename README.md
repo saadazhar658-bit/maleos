@@ -7,6 +7,7 @@
 *Monolithic speed. Microkernel stability.*
 
 [Architecture](#-architecture) •
+[Memory](#-memory-layout) •
 [Roadmap](#-roadmap) •
 [Getting Started](#-getting-started) •
 [Debugging](#-running--debugging) •
@@ -88,6 +89,8 @@ flowchart LR
 ```
 
 > **Legend:** ⬜ planned · 🟨 in progress · ✅ done
+>
+> **Current status:** Phases 0–2 complete. Next up: Phase 3 (multitasking).
 
 ### Phase 0 — Foundations & Tooling
 - ✅ Reproducible `x86_64-elf` cross-compiler setup (`scripts/build-toolchain.sh`)
@@ -96,18 +99,19 @@ flowchart LR
 - ✅ Coding standards, repository layout, and contribution guide
 
 ### Phase 1 — Bootstrapping & Baseline
-- ⬜ Multiboot2-compliant boot via GRUB
-- ⬜ Transition into 64-bit long mode
-- ⬜ GDT, IDT, and CPU exception handlers
-- ⬜ Early console: VGA text / framebuffer driver
-- ⬜ Serial (UART) logging for headless debugging
+- ✅ Multiboot2-compliant boot via GRUB
+- ✅ Transition into 64-bit long mode (PAE, NX, write-protect enabled)
+- ✅ GDT with TSS, IDT, and CPU exception handlers (double fault on its own IST stack)
+- ✅ Early console: VGA text driver
+- ✅ Serial (UART) logging for headless debugging
 
 ### Phase 2 — Memory Management
-- ⬜ Parse the bootloader-provided memory map
-- ⬜ Physical Page Frame Allocator (4 KiB frames)
-- ⬜ Virtual memory paging and higher-half kernel mapping
-- ⬜ Kernel heap allocator
-- ⬜ Memory protection: NX bit, guard pages, W^X enforcement
+- ✅ Parse the bootloader-provided memory map
+- ✅ Physical Page Frame Allocator (4 KiB frames, bitmap, contiguous allocation)
+- ✅ Virtual memory paging and higher-half kernel mapping (`0xFFFFFFFF80000000`)
+- ✅ Kernel heap allocator (`kmalloc`/`kfree`, grows on demand, coalescing, corruption checks)
+- ✅ Memory protection: NX bit, guard pages, W^X enforcement
+- ✅ In-kernel self-tests (117 checks) run on every boot and in CI
 
 ### Phase 3 — Preemptive Multitasking
 - ⬜ Interrupt controller setup (PIC → APIC)
@@ -145,6 +149,35 @@ flowchart LR
 
 ---
 
+## 🧠 Memory Layout
+
+| Region | Virtual address | Permissions | Notes |
+|---|---|---|---|
+| Direct map (HHDM) | `0xFFFF800000000000` + phys | RW, NX | All RAM, 2 MiB pages |
+| Kernel heap | `0xFFFFC00000000000` | RW, NX | Grows on demand, up to 256 MiB |
+| Kernel image | `0xFFFFFFFF80000000` + phys | `.text` RX, `.rodata` R, `.data`/`.bss` RW+NX | Per-section W^X |
+| Kernel stack guard | lowest page of the stack | unmapped | Overflow faults instead of corrupting memory |
+
+No mapping is ever writable and executable at once, and the boot identity map is removed after paging is set up.
+Details and design notes: [docs/MEMORY.md](docs/MEMORY.md).
+
+### Boot output
+
+```text
+Maleos kernel starting
+GDT/IDT loaded
+Physical memory map:
+  [0000000000100000 - 000000000ffe0000) usable
+  ...
+PMM: 254 MiB usable, 254 MiB free (65160 frames)
+VMM: kernel address space active, W^X enforced
+Heap: 64 KiB mapped at ffffc00000000000
+MALEOS BOOT OK
+MM SELFTEST: PASS (117 checks)
+```
+
+---
+
 ## ⚙️ Getting Started
 
 ### Prerequisites
@@ -162,6 +195,7 @@ Install the build tools and emulation suite (Ubuntu / Debian):
 | **Target architecture** | `x86_64-elf` (cross-compiled) |
 | **Build system** | `Makefile` (auto-detects `x86_64-elf-gcc`, falls back to host GCC) |
 | **Boot protocol** | Multiboot2 via GRUB |
+| **Memory limit** | Up to 8 GiB of RAM is managed (`PMM_MAX_PHYS`) |
 | **Emulator** | QEMU |
 
 ---
@@ -197,7 +231,7 @@ gdb -ex "target remote localhost:1234" -ex "symbol-file build/kernel.elf"
 | `make iso` | Compile and package a bootable ISO |
 | `make run` | Boot the ISO in QEMU |
 | `make debug` | Boot paused with a GDB server on port 1234 |
-| `make test` | Headless boot test (what CI runs) |
+| `make test` | Headless boot test (what CI runs); try `MEM=2G make test` |
 | `make format` | Format C sources with clang-format |
 | `make clean` | Remove build artifacts |
 

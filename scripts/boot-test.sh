@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-# Headless boot test: boots the ISO in QEMU and checks for the boot marker
-# printed over the serial port. Exits non-zero on failure.
+# Headless boot test: boots the ISO in QEMU and checks the serial output for
+# every marker in MARKERS. Exits non-zero on failure.
+#
+# Environment:
+#   MEM      guest RAM size            (default 256M)
+#   TIMEOUT  seconds before giving up  (default 30)
+#   MARKERS  '|'-separated list of strings that must appear
 set -euo pipefail
 
 ISO="${1:-build/maleos.iso}"
-MARKER="${MARKER:-MALEOS BOOT OK}"
+MEM="${MEM:-256M}"
 TIMEOUT="${TIMEOUT:-30}"
+MARKERS="${MARKERS:-MALEOS BOOT OK|MM SELFTEST: PASS}"
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT
 
@@ -16,7 +22,7 @@ trap 'rm -f "$LOG"' EXIT
 set +e
 timeout "$TIMEOUT" qemu-system-x86_64 \
     -cdrom "$ISO" \
-    -m 256M \
+    -m "$MEM" \
     -display none \
     -serial "file:$LOG" \
     -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
@@ -24,14 +30,24 @@ timeout "$TIMEOUT" qemu-system-x86_64 \
 STATUS=$?
 set -e
 
-echo "--- serial output ---"
+echo "--- serial output (RAM: $MEM) ---"
 cat "$LOG"
-echo "---------------------"
+echo "---------------------------------"
 
-if grep -q "$MARKER" "$LOG"; then
-    echo "PASS: boot marker found (qemu exit status $STATUS)"
-    exit 0
+FAILED=0
+IFS='|' read -ra LIST <<< "$MARKERS"
+for m in "${LIST[@]}"; do
+    if grep -qF "$m" "$LOG"; then
+        echo "PASS: found '$m'"
+    else
+        echo "FAIL: missing '$m'" >&2
+        FAILED=1
+    fi
+done
+
+if [ "$STATUS" -ne 33 ]; then
+    echo "FAIL: QEMU exit status $STATUS (expected 33: kernel did not finish cleanly)" >&2
+    FAILED=1
 fi
 
-echo "FAIL: marker '$MARKER' not found (qemu exit status $STATUS)" >&2
-exit 1
+exit $FAILED

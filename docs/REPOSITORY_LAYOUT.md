@@ -8,6 +8,7 @@ maleos/
 │   └── PULL_REQUEST_TEMPLATE.md
 ├── docs/
 │   ├── CODING_STANDARDS.md       Style and safety rules
+│   ├── MEMORY.md                 Memory management design (Phase 2)
 │   └── REPOSITORY_LAYOUT.md      This file
 ├── iso/boot/grub/grub.cfg        GRUB menu packaged into the ISO
 ├── scripts/
@@ -15,9 +16,13 @@ maleos/
 │   ├── build-toolchain.sh        Optional x86_64-elf cross compiler build
 │   └── boot-test.sh              Headless QEMU boot test
 ├── src/
-│   ├── arch/x86_64/              Machine-specific code (HAL, boot)
-│   ├── include/                  Public kernel headers
-│   └── kernel/                   Architecture-independent core
+│   ├── arch/x86_64/              boot.asm, GDT/IDT/ISR stubs, serial, VGA
+│   ├── include/{arch,kernel,mm}/ Public headers
+│   └── kernel/
+│       ├── main.c                kmain() and boot sequence
+│       ├── bootinfo.c            Multiboot2 parsing
+│       ├── printk.c, string.c    Kernel printf, mem*/str* helpers
+│       └── mm/                   pmm.c, vmm.c, heap.c, selftest.c
 ├── CONTRIBUTING.md
 ├── LICENSE
 ├── Makefile
@@ -30,7 +35,7 @@ maleos/
 | Subsystem | Location (planned) |
 |---|---|
 | Boot, GDT/IDT, interrupts | `src/arch/x86_64/` |
-| Memory manager (PMM/VMM/heap) | `src/kernel/mm/` |
+| Memory manager (PMM/VMM/heap) | `src/kernel/mm/` (done) |
 | Scheduler, threads, IPC | `src/kernel/sched/`, `src/kernel/ipc/` |
 | Drivers and driver shim | `src/drivers/` |
 | VFS and filesystems | `src/fs/` |
