@@ -90,10 +90,10 @@ flowchart LR
 > **Legend:** ⬜ planned · 🟨 in progress · ✅ done
 
 ### Phase 0 — Foundations & Tooling
-- ⬜ Reproducible `x86_64-elf` cross-compiler setup
-- ⬜ Build system (`Makefile`) with `iso`, `run`, and `debug` targets
-- ⬜ CI pipeline: build on every push, boot-test in headless QEMU
-- ⬜ Coding standards, repository layout, and contribution guide
+- ✅ Reproducible `x86_64-elf` cross-compiler setup (`scripts/build-toolchain.sh`)
+- ✅ Build system (`Makefile`) with `iso`, `run`, `debug`, and `test` targets
+- ✅ CI pipeline: build on every push, boot-test in headless QEMU
+- ✅ Coding standards, repository layout, and contribution guide
 
 ### Phase 1 — Bootstrapping & Baseline
 - ⬜ Multiboot2-compliant boot via GRUB
@@ -149,12 +149,10 @@ flowchart LR
 
 ### Prerequisites
 
-Install the cross-compiler dependencies, build tools, and emulation suite. Example for Ubuntu / Debian:
+Install the build tools and emulation suite (Ubuntu / Debian):
 
 ```bash
-sudo apt update
-sudo apt install build-essential bison flex libgmp3-dev libmpc-dev libmpfr-dev \
-                 texinfo qemu-system-x86 grub-pc-bin xorriso gdb
+./scripts/install-deps.sh
 ```
 
 ### Build Target
@@ -162,7 +160,7 @@ sudo apt install build-essential bison flex libgmp3-dev libmpc-dev libmpfr-dev \
 | Setting | Value |
 |---|---|
 | **Target architecture** | `x86_64-elf` (cross-compiled) |
-| **Build system** | `Makefile` |
+| **Build system** | `Makefile` (auto-detects `x86_64-elf-gcc`, falls back to host GCC) |
 | **Boot protocol** | Multiboot2 via GRUB |
 | **Emulator** | QEMU |
 
@@ -199,6 +197,8 @@ gdb -ex "target remote localhost:1234" -ex "symbol-file build/kernel.elf"
 | `make iso` | Compile and package a bootable ISO |
 | `make run` | Boot the ISO in QEMU |
 | `make debug` | Boot paused with a GDB server on port 1234 |
+| `make test` | Headless boot test (what CI runs) |
+| `make format` | Format C sources with clang-format |
 | `make clean` | Remove build artifacts |
 
 ---
@@ -212,7 +212,7 @@ Contributions, bug reports, and ideas are welcome.
 3. Commit with clear messages
 4. Open a pull request describing what changed and why
 
-Please keep changes scoped to the current roadmap phase where possible.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md). Please keep changes scoped to the current roadmap phase where possible.
 
 ---
 
