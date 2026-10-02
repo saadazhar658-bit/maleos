@@ -1,136 +1,227 @@
-# Maleos Kernel
+<div align="center">
 
-A lightweight, modern hybrid operating system kernel designed for efficiency, modularity, and memory safety. **Maleos** bridges the performance benefits of a monolithic kernel with the isolated stability of a microkernel architecture.
+# 🌙 Maleos Kernel
+
+**A lightweight, modern hybrid kernel built for efficiency, modularity, and memory safety.**
+
+*Monolithic speed. Microkernel stability.*
+
+[Architecture](#-architecture) •
+[Roadmap](#-roadmap) •
+[Getting Started](#-getting-started) •
+[Debugging](#-running--debugging) •
+[Contributing](#-contributing)
+
+</div>
 
 ---
 
-## 🗺️ System Architecture Overview
+## ✨ Highlights
 
-Maleos utilizes a **Hybrid Architecture** featuring a highly optimized kernel core wrapped around a flexible Hardware Abstraction Layer (HAL).
+| | Feature | Description |
+|---|---|---|
+| ⚡ | **Hybrid design** | Performance-critical services in the core, risky components isolated behind clean boundaries |
+| 🧩 | **Modular** | Subsystems communicate through well-defined interfaces and can evolve independently |
+| 🛡️ | **Memory safe by design** | Strict paging, privilege separation, and guard-rail allocators from day one |
+| 🔌 | **Portable core** | A Hardware Abstraction Layer keeps machine-specific code out of the kernel proper |
+| 🔍 | **Debug friendly** | One-command QEMU + GDB workflow |
 
-Use code with caution.
-+-------------------------------------------------------------------+
-|                           USER SPACE                              |
-|   +-------------------+  +-------------------+  +-------------+   |
-|   |  User Apps / CLI  |  |  Native Utilities |  | GUI Engine  |   |
-|   +---------+---------+  +---------+---------+  +------+------+   |
-+-------------|----------------------|-------------------|----------+
-| (System Call Interface / APIs)           |
-+-------------v----------------------v-------------------v----------+
-|                           KERNEL SPACE                            |
-|                                                                   |
-|   +-----------------------------------------------------------+   |
-|   |                  System Call Interface                    |   |
-|   +-----------------------------------------------------------+   |
-|                                                                   |
-|   +-------------------+  +-------------------+  +-------------+   |
-|   | Process/Thread    |  | Virtual Memory    |  | Inter-Process|  |
-|   | Scheduler         |  | Manager (VMM)     |  | Comm (IPC)  |   |
-|   +-------------------+  +-------------------+  +-------------+   |
-|                                                                   |
-|   +-------------------+  +-------------------+  +-------------+   |
-|   | Virtual File      |  | Network Stack     |  | Driver Shim |   |
-|   | System (VFS)      |  | (TCP/IP)          |  | Layer       |   |
-|   +-------------------+  +-------------------+  +-------------+   |
-|                                                                   |
-|   +-----------------------------------------------------------+   |
-|   |        Hardware Abstraction Layer (HAL) / Bootloader      |   |
-|   +-----------------------------------------------------------+   |
-+-------------------------------------------------------------------+
-|
-[ PHYSICAL HARDWARE ]
+---
+
+## 🗺️ Architecture
+
+Maleos wraps an optimized kernel core around a flexible Hardware Abstraction Layer (HAL).
+
+```text
+┌───────────────────────────────────────────────────────────────┐
+│                          USER SPACE                           │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐   │
+│  │ User Apps/CLI  │  │ Native Utils   │  │  GUI Engine    │   │
+│  └────────────────┘  └────────────────┘  └────────────────┘   │
+├───────────────────────────────────────────────────────────────┤
+│             System Call Interface  (syscall / sysret)         │
+├───────────────────────────────────────────────────────────────┤
+│                         KERNEL SPACE                          │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐   │
+│  │ Process/Thread │  │ Virtual Memory │  │ Inter-Process  │   │
+│  │ Scheduler      │  │ Manager (VMM)  │  │ Comm. (IPC)    │   │
+│  └────────────────┘  └────────────────┘  └────────────────┘   │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐   │
+│  │ Virtual File   │  │ Network Stack  │  │ Driver Shim    │   │
+│  │ System (VFS)   │  │ (TCP/IP)       │  │ Layer          │   │
+│  └────────────────┘  └────────────────┘  └────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │        Hardware Abstraction Layer (HAL) / Bootloader    │  │
+│  └─────────────────────────────────────────────────────────┘  │
+├───────────────────────────────────────────────────────────────┤
+│                      PHYSICAL HARDWARE                        │
+└───────────────────────────────────────────────────────────────┘
+```
 
 ### Core Subsystems
 
-* **System Call Interface (SCI):** Secure gateway enabling unprivileged user applications to request isolated kernel privileges.
-* **Process Scheduler:** Preemptive scheduler managing task execution slices across multiple threads using a prioritized distribution model.
-* **Virtual Memory Manager (VMM):** Implements paging structures, protects memory boundaries, and manages physical and virtual resource allocations.
-* **Virtual File System (VFS):** Abstraction layer providing uniform file access controls over distinct file storage formats.
-* **Hardware Abstraction Layer (HAL):** Isolates the core kernel subsystems from machine-specific assembly implementations.
+| Subsystem | Responsibility |
+|---|---|
+| **System Call Interface (SCI)** | Secure gateway letting unprivileged applications request kernel services |
+| **Process Scheduler** | Preemptive, priority-based scheduling of threads across time slices |
+| **Virtual Memory Manager (VMM)** | Paging, memory protection, and physical/virtual allocation |
+| **Inter-Process Communication (IPC)** | Message passing between isolated components and processes |
+| **Virtual File System (VFS)** | Uniform file access across different storage formats |
+| **Driver Shim Layer** | Stable driver interface that keeps drivers decoupled from the core |
+| **Hardware Abstraction Layer (HAL)** | Isolates the kernel from machine-specific code |
 
 ---
 
-## 🛠️ Development & Roadmap Plan
+## 🛣️ Roadmap
 
-The development of Maleos follows a strict six-stage lifecycle to guarantee baseline stability before advanced layer implementation:
+Development follows a strict, staged lifecycle so each layer is stable before the next is built on top of it.
 
-[Phase 1: Boot] -> [Phase 2: Memory] -> [Phase 3: Multitask] -> [Phase 4: Drivers] -> [Phase 5: VFS] -> [Phase 6: Userland]
+```mermaid
+flowchart LR
+    P0[Phase 0<br/>Toolchain & CI] --> P1[Phase 1<br/>Boot]
+    P1 --> P2[Phase 2<br/>Memory]
+    P2 --> P3[Phase 3<br/>Multitasking]
+    P3 --> P4[Phase 4<br/>Drivers]
+    P4 --> P5[Phase 5<br/>VFS]
+    P5 --> P6[Phase 6<br/>Userland]
+    P6 --> P7[Phase 7<br/>Hardening]
+```
 
-### 1. Phase 1: Bootstrapping & Baseline
-* [ ] Multiboot-compliant bootloader integration (GRUB environment configuration).
-* [ ] Global Descriptor Table (GDT) and Interrupt Descriptor Table (IDT) configuration.
-* [ ] Early initialization display mapping via a basic VGA/framebuffer text driver.
+> **Legend:** ⬜ planned · 🟨 in progress · ✅ done
 
-### 2. Phase 2: Memory Management
-* [ ] Reading hardware memory layouts provided by the bootloader map.
-* [ ] 4KB physical block tracking via a custom Page Frame Allocator.
-* [ ] Virtual memory paging setup and continuous dynamic kernel heap allocator.
+### Phase 0 — Foundations & Tooling
+- ⬜ Reproducible `x86_64-elf` cross-compiler setup
+- ⬜ Build system (`Makefile`) with `iso`, `run`, and `debug` targets
+- ⬜ CI pipeline: build on every push, boot-test in headless QEMU
+- ⬜ Coding standards, repository layout, and contribution guide
 
-### 3. Phase 3: Preemptive Multitasking
-* [ ] Programmable timer integration (PIT/APIC) to drive scheduling intervals.
-* [ ] Context switching implementation via CPU state registration backups.
-* [ ] Dynamic scheduling thread queues for task execution handling.
+### Phase 1 — Bootstrapping & Baseline
+- ⬜ Multiboot2-compliant boot via GRUB
+- ⬜ Transition into 64-bit long mode
+- ⬜ GDT, IDT, and CPU exception handlers
+- ⬜ Early console: VGA text / framebuffer driver
+- ⬜ Serial (UART) logging for headless debugging
 
-### 4. Phase 4: Basic Input/Output Drivers
-* [ ] Interactive hardware line bindings for standard input setups (PS/2 Keyboard).
-* [ ] Secondary storage mass-device access pipelines (IDE/PATA/AHCI interfaces).
+### Phase 2 — Memory Management
+- ⬜ Parse the bootloader-provided memory map
+- ⬜ Physical Page Frame Allocator (4 KiB frames)
+- ⬜ Virtual memory paging and higher-half kernel mapping
+- ⬜ Kernel heap allocator
+- ⬜ Memory protection: NX bit, guard pages, W^X enforcement
 
-### 5. Phase 5: Virtual File System (VFS)
-* [ ] Common inode/vnode tracking layouts within the VFS pipeline.
-* [ ] Implement a lightweight structured file format (such as `ext2` or custom read-only file indexes).
+### Phase 3 — Preemptive Multitasking
+- ⬜ Interrupt controller setup (PIC → APIC)
+- ⬜ Timer integration (PIT / APIC timer) for scheduling ticks
+- ⬜ Context switching with full CPU state save/restore
+- ⬜ Priority-based scheduler with run queues
+- ⬜ Basic synchronization primitives (spinlocks, mutexes)
+- ⬜ Kernel IPC: message passing
 
-### 6. Phase 6: User Land Execution
-* [ ] Implement architectural privilege transitions (`syscall` and `sysret` setups).
-* [ ] Binary compilation image handling (ELF binary loading structures).
-* [ ] Launch user land interactive runtime shell console environment.
+### Phase 4 — Basic I/O Drivers
+- ⬜ PS/2 keyboard driver
+- ⬜ PCI bus enumeration
+- ⬜ Storage drivers: IDE/PATA, then AHCI
+- ⬜ Driver Shim Layer API stabilized
+
+### Phase 5 — Virtual File System
+- ⬜ Core VFS abstractions (inode / vnode layouts)
+- ⬜ Initial ramdisk (initrd) support
+- ⬜ Lightweight on-disk filesystem (`ext2` or custom read-only index)
+- ⬜ File descriptor table and basic file syscalls
+
+### Phase 6 — Userland Execution
+- ⬜ Privilege transitions via `syscall` / `sysret`
+- ⬜ ELF binary loader
+- ⬜ Per-process address spaces
+- ⬜ First user process (`init`)
+- ⬜ Interactive shell
+
+### Phase 7 — Hardening & Expansion *(new)*
+- ⬜ Kernel test suite and fuzzing of the syscall surface
+- ⬜ Network stack (NIC driver, ARP, IP, TCP/UDP)
+- ⬜ SMP (multi-core) support
+- ⬜ Stack protector, KASLR, and other mitigations
+- ⬜ Documentation site and a tagged `v0.1.0` release
 
 ---
 
-## ⚙️ Environment Setup & Toolchain
+## ⚙️ Getting Started
 
 ### Prerequisites
 
-To compile and emulate the Maleos kernel, install the required cross-compilers, build management tools, and emulation suites:
+Install the cross-compiler dependencies, build tools, and emulation suite. Example for Ubuntu / Debian:
 
 ```bash
-# Ubuntu / Debian dependencies example
 sudo apt update
 sudo apt install build-essential bison flex libgmp3-dev libmpc-dev libmpfr-dev \
                  texinfo qemu-system-x86 grub-pc-bin xorriso gdb
 ```
 
-### Build & Compilation Target
-* **Target Architecture:** `x86_64-elf` (Cross-compiled environment targets)
-* **Default Configuration Engine:** `Makefile` / `CMake` configuration frameworks
+### Build Target
+
+| Setting | Value |
+|---|---|
+| **Target architecture** | `x86_64-elf` (cross-compiled) |
+| **Build system** | `Makefile` |
+| **Boot protocol** | Multiboot2 via GRUB |
+| **Emulator** | QEMU |
 
 ---
 
-## 🚀 Running and Debugging
+## 🚀 Running & Debugging
 
-### Compilation
-To compile the core source layout assets and package them into an execution-ready boot ISO:
+### Build the boot ISO
+
 ```bash
 make iso
 ```
 
-### Simulation / Emulation
-To quickly execute the compiled Maleos ISO within a safe isolated QEMU environment:
+### Run in QEMU
+
 ```bash
 make run
 ```
 
-### Remote Kernel Debugging
-To initialize the execution matrix under localized GDB hooks for hardware line inspection:
+### Debug with GDB
+
 ```bash
-# Runs QEMU paused, listening on localhost port 1234
+# Terminal 1: start QEMU paused, listening on localhost:1234
 make debug
 
-# In a separate terminal session, connect using your GDB tool:
+# Terminal 2: attach GDB
 gdb -ex "target remote localhost:1234" -ex "symbol-file build/kernel.elf"
 ```
+
+### Quick reference
+
+| Command | What it does |
+|---|---|
+| `make iso` | Compile and package a bootable ISO |
+| `make run` | Boot the ISO in QEMU |
+| `make debug` | Boot paused with a GDB server on port 1234 |
+| `make clean` | Remove build artifacts |
+
+---
+
+## 🤝 Contributing
+
+Contributions, bug reports, and ideas are welcome.
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-change`
+3. Commit with clear messages
+4. Open a pull request describing what changed and why
+
+Please keep changes scoped to the current roadmap phase where possible.
 
 ---
 
 ## 📜 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file 
+Released under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+
+<div align="center">
+
+*Built from the first instruction up.* 🌙
+
+</div>
