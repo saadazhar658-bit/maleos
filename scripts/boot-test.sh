@@ -11,7 +11,7 @@ set -euo pipefail
 ISO="${1:-build/maleos.iso}"
 MEM="${MEM:-256M}"
 TIMEOUT="${TIMEOUT:-30}"
-MARKERS="${MARKERS:-MALEOS BOOT OK|MM SELFTEST: PASS}"
+MARKERS="${MARKERS:-MALEOS BOOT OK|MM SELFTEST: PASS|SCHED SELFTEST: PASS}"
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT
 

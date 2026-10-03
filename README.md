@@ -8,6 +8,7 @@
 
 [Architecture](#-architecture) •
 [Memory](#-memory-layout) •
+[Scheduling](#-scheduling--ipc) •
 [Roadmap](#-roadmap) •
 [Getting Started](#-getting-started) •
 [Debugging](#-running--debugging) •
@@ -90,7 +91,7 @@ flowchart LR
 
 > **Legend:** ⬜ planned · 🟨 in progress · ✅ done
 >
-> **Current status:** Phases 0–2 complete. Next up: Phase 3 (multitasking).
+> **Current status:** Phases 0–3 complete. Next up: Phase 4 (basic I/O drivers).
 
 ### Phase 0 — Foundations & Tooling
 - ✅ Reproducible `x86_64-elf` cross-compiler setup (`scripts/build-toolchain.sh`)
@@ -114,12 +115,14 @@ flowchart LR
 - ✅ In-kernel self-tests (117 checks) run on every boot and in CI
 
 ### Phase 3 — Preemptive Multitasking
-- ⬜ Interrupt controller setup (PIC → APIC)
-- ⬜ Timer integration (PIT / APIC timer) for scheduling ticks
-- ⬜ Context switching with full CPU state save/restore
-- ⬜ Priority-based scheduler with run queues
-- ⬜ Basic synchronization primitives (spinlocks, mutexes)
-- ⬜ Kernel IPC: message passing
+- ✅ Interrupt controller setup (legacy PIC masked, local APIC enabled; I/O APIC arrives with Phase 4)
+- ✅ Timer integration (APIC timer, calibrated against the PIT) driving a 100 Hz scheduler tick
+- ✅ Context switching with callee-saved register save/restore on per-thread kernel stacks (guard pages)
+- ✅ Priority-based preemptive scheduler: 8 levels, strict priority, round robin within a level
+- ✅ Synchronization primitives: irq-safe spinlocks, sleeping mutexes, semaphores, wait queues
+- ✅ Kernel IPC: bounded message ports, timeouts, request/reply
+- ✅ PMM, VMM, heap and `printk` made safe under preemption
+- ✅ 179 in-kernel scheduler/IPC checks run on every boot and in CI
 
 ### Phase 4 — Basic I/O Drivers
 - ⬜ PS/2 keyboard driver
@@ -157,6 +160,8 @@ flowchart LR
 | Kernel heap | `0xFFFFC00000000000` | RW, NX | Grows on demand, up to 256 MiB |
 | Kernel image | `0xFFFFFFFF80000000` + phys | `.text` RX, `.rodata` R, `.data`/`.bss` RW+NX | Per-section W^X |
 | Kernel stack guard | lowest page of the stack | unmapped | Overflow faults instead of corrupting memory |
+| MMIO | `0xFFFFE00000000000` | RW, NX, uncached | Device registers via `vmm_ioremap()` |
+| Thread stacks | `0xFFFFE80000000000` | RW, NX | 16 KiB each, unmapped guard page below every stack |
 
 No mapping is ever writable and executable at once, and the boot identity map is removed after paging is set up.
 Details and design notes: [docs/MEMORY.md](docs/MEMORY.md).
@@ -174,7 +179,31 @@ VMM: kernel address space active, W^X enforced
 Heap: 64 KiB mapped at ffffc00000000000
 MALEOS BOOT OK
 MM SELFTEST: PASS (117 checks)
+APIC: id 0, timer 625274 ticks per 10 ms, 100 Hz scheduler tick
+Scheduler: 8 priority levels, 30 ms quantum, preemptive
+SCHED SELFTEST: PASS (179 checks, 827 context switches)
 ```
+
+---
+
+## 🧵 Scheduling & IPC
+
+| Feature | Details |
+|---|---|
+| Scheduler | Preemptive, 8 strict priority levels, round robin within a level, O(1) pick |
+| Tick / slice | 100 Hz tick, 30 ms time slice (APIC timer) |
+| Threads | `thread_create`, `thread_join`, `thread_detach`, `thread_sleep_ms`, `sched_yield` |
+| Locks | `spin_lock_irqsave`, `mutex_*`, `sem_*`, `waitq_*` |
+| IPC | Bounded message ports with timeouts, plus `ipc_call` / `ipc_reply` |
+
+```c
+static void worker(void *arg) { printk("hello from %s\n", thread_current()->name); }
+
+struct thread *t = thread_create("worker", worker, NULL, SCHED_PRIO_NORMAL);
+thread_join(t);
+```
+
+Design notes, locking rules and limitations: [docs/SCHEDULER.md](docs/SCHEDULER.md).
 
 ---
 
@@ -196,6 +225,7 @@ Install the build tools and emulation suite (Ubuntu / Debian):
 | **Build system** | `Makefile` (auto-detects `x86_64-elf-gcc`, falls back to host GCC) |
 | **Boot protocol** | Multiboot2 via GRUB |
 | **Memory limit** | Up to 8 GiB of RAM is managed (`PMM_MAX_PHYS`) |
+| **CPUs** | One (SMP comes in Phase 7) |
 | **Emulator** | QEMU |
 
 ---

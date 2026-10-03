@@ -9,6 +9,7 @@ maleos/
 ├── docs/
 │   ├── CODING_STANDARDS.md       Style and safety rules
 │   ├── MEMORY.md                 Memory management design (Phase 2)
+│   ├── SCHEDULER.md              Interrupts, scheduler, locking, IPC (Phase 3)
 │   └── REPOSITORY_LAYOUT.md      This file
 ├── iso/boot/grub/grub.cfg        GRUB menu packaged into the ISO
 ├── scripts/
@@ -16,12 +17,15 @@ maleos/
 │   ├── build-toolchain.sh        Optional x86_64-elf cross compiler build
 │   └── boot-test.sh              Headless QEMU boot test
 ├── src/
-│   ├── arch/x86_64/              boot.asm, GDT/IDT/ISR stubs, serial, VGA
+│   ├── arch/x86_64/              boot.asm, GDT/IDT/ISR stubs, APIC, context switch, serial, VGA
 │   ├── include/{arch,kernel,mm}/ Public headers
 │   └── kernel/
 │       ├── main.c                kmain() and boot sequence
 │       ├── bootinfo.c            Multiboot2 parsing
 │       ├── printk.c, string.c    Kernel printf, mem*/str* helpers
+│       ├── sched.c, sync.c       Scheduler, threads, mutex/semaphore
+│       ├── ipc.c, kstack.c       Message ports, per-thread kernel stacks
+│       ├── spinlock.c            Deadlock report for spinlocks
 │       └── mm/                   pmm.c, vmm.c, heap.c, selftest.c
 ├── CONTRIBUTING.md
 ├── LICENSE
@@ -36,7 +40,7 @@ maleos/
 |---|---|
 | Boot, GDT/IDT, interrupts | `src/arch/x86_64/` |
 | Memory manager (PMM/VMM/heap) | `src/kernel/mm/` (done) |
-| Scheduler, threads, IPC | `src/kernel/sched/`, `src/kernel/ipc/` |
+| Scheduler, threads, IPC | `src/kernel/` (done) |
 | Drivers and driver shim | `src/drivers/` |
 | VFS and filesystems | `src/fs/` |
 | Network stack | `src/net/` |

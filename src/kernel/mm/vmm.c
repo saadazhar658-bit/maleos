@@ -2,6 +2,7 @@
 
 #include "arch/cpu.h"
 #include "kernel/printk.h"
+#include "kernel/spinlock.h"
 #include "kernel/string.h"
 #include "mm/mm.h"
 #include "mm/pmm.h"
@@ -34,6 +35,8 @@ extern char __stack_guard[];
 
 bool hhdm_ready;
 static uint64_t kernel_pml4;
+static spinlock_t vmm_lock = SPINLOCK_INIT;
+static uint64_t mmio_next = MMIO_BASE;
 
 static inline uint64_t *table_virt(uint64_t phys)
 {
@@ -124,7 +127,7 @@ static uint64_t *walk(uint64_t pml4, uint64_t virt, int stop_shift, bool create,
     return table;
 }
 
-int vmm_map(uint64_t pml4, uint64_t virt, uint64_t phys, uint32_t prot)
+static int map_locked(uint64_t pml4, uint64_t virt, uint64_t phys, uint32_t prot)
 {
     if ((virt | phys) & (PAGE_SIZE - 1) || !canonical(virt))
         return VMM_EINVAL;
@@ -144,7 +147,7 @@ int vmm_map(uint64_t pml4, uint64_t virt, uint64_t phys, uint32_t prot)
     return VMM_OK;
 }
 
-int vmm_unmap(uint64_t pml4, uint64_t virt)
+static int unmap_locked(uint64_t pml4, uint64_t virt)
 {
     if ((virt & (PAGE_SIZE - 1)) || !canonical(virt))
         return VMM_EINVAL;
@@ -163,7 +166,7 @@ int vmm_unmap(uint64_t pml4, uint64_t virt)
     return VMM_OK;
 }
 
-int vmm_protect(uint64_t pml4, uint64_t virt, uint32_t prot)
+static int protect_locked(uint64_t pml4, uint64_t virt, uint32_t prot)
 {
     if ((virt & (PAGE_SIZE - 1)) || !canonical(virt))
         return VMM_EINVAL;
@@ -182,6 +185,59 @@ int vmm_protect(uint64_t pml4, uint64_t virt, uint32_t prot)
     *e = (*e & PTE_ADDR) | prot_to_flags(prot);
     invlpg(virt);
     return VMM_OK;
+}
+
+int vmm_map(uint64_t pml4, uint64_t virt, uint64_t phys, uint32_t prot)
+{
+    uint64_t flags = spin_lock_irqsave(&vmm_lock);
+    int r = map_locked(pml4, virt, phys, prot);
+    spin_unlock_irqrestore(&vmm_lock, flags);
+    return r;
+}
+
+int vmm_unmap(uint64_t pml4, uint64_t virt)
+{
+    uint64_t flags = spin_lock_irqsave(&vmm_lock);
+    int r = unmap_locked(pml4, virt);
+    spin_unlock_irqrestore(&vmm_lock, flags);
+    return r;
+}
+
+int vmm_protect(uint64_t pml4, uint64_t virt, uint32_t prot)
+{
+    uint64_t flags = spin_lock_irqsave(&vmm_lock);
+    int r = protect_locked(pml4, virt, prot);
+    spin_unlock_irqrestore(&vmm_lock, flags);
+    return r;
+}
+
+void *vmm_ioremap(uint64_t phys, uint64_t size)
+{
+    if (size == 0)
+        return NULL;
+
+    uint64_t off = phys & (PAGE_SIZE - 1);
+    uint64_t len = ALIGN_UP(size + off, PAGE_SIZE);
+
+    uint64_t flags = spin_lock_irqsave(&vmm_lock);
+    uint64_t virt = mmio_next;
+    if (virt + len > MMIO_BASE + MMIO_SIZE) {
+        spin_unlock_irqrestore(&vmm_lock, flags);
+        return NULL;
+    }
+
+    for (uint64_t o = 0; o < len; o += PAGE_SIZE) {
+        if (map_locked(kernel_pml4, virt + o, (phys - off) + o, VMM_WRITE | VMM_NOCACHE) !=
+            VMM_OK) {
+            for (uint64_t u = 0; u < o; u += PAGE_SIZE)
+                unmap_locked(kernel_pml4, virt + u);
+            spin_unlock_irqrestore(&vmm_lock, flags);
+            return NULL;
+        }
+    }
+    mmio_next += len + PAGE_SIZE; /* leave an unmapped gap after each mapping */
+    spin_unlock_irqrestore(&vmm_lock, flags);
+    return (void *)(virt + off);
 }
 
 bool vmm_translate(uint64_t pml4, uint64_t virt, uint64_t *phys, uint32_t *prot)

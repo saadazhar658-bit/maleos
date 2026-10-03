@@ -1,6 +1,7 @@
 #include "mm/heap.h"
 
 #include "kernel/printk.h"
+#include "kernel/spinlock.h"
 #include "kernel/string.h"
 #include "mm/mm.h"
 #include "mm/pmm.h"
@@ -32,6 +33,7 @@ struct block {
 
 static uint64_t heap_end = KHEAP_BASE; /* first unmapped heap address */
 static struct block *heap_last;
+static spinlock_t heap_lock = SPINLOCK_INIT;
 
 static inline struct block *first_block(void)
 {
@@ -122,12 +124,14 @@ static bool heap_grow(uint64_t need)
 
 void heap_init(void)
 {
+    uint64_t flags = spin_lock_irqsave(&heap_lock);
     KASSERT(heap_last == NULL);
     if (!heap_grow(HEAP_MIN_GROW - HDR))
         kpanic("heap: cannot create the initial heap");
+    spin_unlock_irqrestore(&heap_lock, flags);
 }
 
-void *kmalloc(size_t size)
+static void *kmalloc_locked(size_t size)
 {
     if (size == 0 || size > HEAP_LIMIT)
         return NULL;
@@ -163,6 +167,14 @@ void *kmalloc(size_t size)
     }
 }
 
+void *kmalloc(size_t size)
+{
+    uint64_t flags = spin_lock_irqsave(&heap_lock);
+    void *p = kmalloc_locked(size);
+    spin_unlock_irqrestore(&heap_lock, flags);
+    return p;
+}
+
 void *kzalloc(size_t size)
 {
     void *p = kmalloc(size);
@@ -171,7 +183,7 @@ void *kzalloc(size_t size)
     return p;
 }
 
-void kfree(void *ptr)
+static void kfree_locked(void *ptr)
 {
     if (!ptr)
         return;
@@ -211,6 +223,13 @@ void kfree(void *ptr)
     }
 }
 
+void kfree(void *ptr)
+{
+    uint64_t flags = spin_lock_irqsave(&heap_lock);
+    kfree_locked(ptr);
+    spin_unlock_irqrestore(&heap_lock, flags);
+}
+
 void *krealloc(void *ptr, size_t size)
 {
     if (!ptr)
@@ -233,7 +252,7 @@ void *krealloc(void *ptr, size_t size)
     return n;
 }
 
-int heap_check(void)
+static int heap_check_locked(void)
 {
     uint64_t covered = 0;
     uint64_t prev_size = 0;
@@ -260,7 +279,7 @@ int heap_check(void)
     return 0;
 }
 
-void heap_get_stats(struct heap_stats *out)
+static void heap_stats_locked(struct heap_stats *out)
 {
     memset(out, 0, sizeof(*out));
     out->mapped_bytes = heap_end - KHEAP_BASE;
@@ -273,4 +292,19 @@ void heap_get_stats(struct heap_stats *out)
             out->used_bytes += b->size;
         }
     }
+}
+
+int heap_check(void)
+{
+    uint64_t flags = spin_lock_irqsave(&heap_lock);
+    int r = heap_check_locked();
+    spin_unlock_irqrestore(&heap_lock, flags);
+    return r;
+}
+
+void heap_get_stats(struct heap_stats *out)
+{
+    uint64_t flags = spin_lock_irqsave(&heap_lock);
+    heap_stats_locked(out);
+    spin_unlock_irqrestore(&heap_lock, flags);
 }

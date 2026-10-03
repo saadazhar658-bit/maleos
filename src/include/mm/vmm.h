@@ -35,6 +35,12 @@ int vmm_map(uint64_t pml4, uint64_t virt, uint64_t phys, uint32_t prot);
 int vmm_unmap(uint64_t pml4, uint64_t virt);
 int vmm_protect(uint64_t pml4, uint64_t virt, uint32_t prot);
 
+/*
+ * Map device memory (uncached, RW, NX) into the MMIO region and return a pointer to `phys`.
+ * Mappings are permanent. Returns NULL on failure.
+ */
+void *vmm_ioremap(uint64_t phys, uint64_t size);
+
 /* Walk the tables. Returns false if unmapped. phys/prot may be NULL. */
 bool vmm_translate(uint64_t pml4, uint64_t virt, uint64_t *phys, uint32_t *prot);
 

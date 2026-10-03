@@ -16,10 +16,15 @@
  *
  *   0xFFFF800000000000  HHDM_BASE   direct map of all physical RAM (RW, NX)
  *   0xFFFFC00000000000  KHEAP_BASE  kernel heap (RW, NX), grows on demand
+ *   0xFFFFE00000000000  MMIO_BASE   device registers (RW, NX, uncached), see vmm_ioremap()
+ *   0xFFFFE80000000000  KSTACK_BASE per-thread kernel stacks, each with an unmapped guard page
  *   0xFFFFFFFF80000000  KERNEL_VMA  kernel image (W^X), virtual = KERNEL_VMA + physical
  */
 #define HHDM_BASE 0xFFFF800000000000ULL
 #define KHEAP_BASE 0xFFFFC00000000000ULL
+#define MMIO_BASE 0xFFFFE00000000000ULL
+#define MMIO_SIZE (1ULL << 30)
+#define KSTACK_BASE 0xFFFFE80000000000ULL
 #define KERNEL_VMA 0xFFFFFFFF80000000ULL
 
 /* Before vmm_init() only the first 1 GiB is reachable, through the boot identity map. */

@@ -1,6 +1,7 @@
 #include "mm/pmm.h"
 
 #include "kernel/printk.h"
+#include "kernel/spinlock.h"
 #include "kernel/string.h"
 #include "mm/mm.h"
 
@@ -22,6 +23,7 @@ static uint64_t usable_frames;
 static uint64_t free_frames;
 static uint64_t highest_phys;
 static uint64_t hint_word;
+static spinlock_t pmm_lock = SPINLOCK_INIT;
 
 static inline bool frame_used(uint64_t f)
 {
@@ -95,7 +97,7 @@ void pmm_init(const struct boot_info *bi)
     free_frames = usable_frames;
 }
 
-uint64_t pmm_alloc_frame(void)
+static uint64_t alloc_frame_locked(void)
 {
     uint64_t words = (frame_limit + 63) / 64;
 
@@ -117,12 +119,12 @@ uint64_t pmm_alloc_frame(void)
     return 0;
 }
 
-uint64_t pmm_alloc_frames(uint64_t count)
+static uint64_t alloc_frames_locked(uint64_t count)
 {
     if (count == 0)
         return 0;
     if (count == 1)
-        return pmm_alloc_frame();
+        return alloc_frame_locked();
 
     uint64_t run = 0;
     for (uint64_t f = 0; f < frame_limit; f++) {
@@ -141,7 +143,7 @@ uint64_t pmm_alloc_frames(uint64_t count)
     return 0;
 }
 
-void pmm_free_frame(uint64_t phys)
+static void free_frame_locked(uint64_t phys)
 {
     if (phys % PAGE_SIZE || phys / PAGE_SIZE >= frame_limit)
         kpanic("pmm_free_frame: bad address %p", (void *)phys);
@@ -156,10 +158,35 @@ void pmm_free_frame(uint64_t phys)
         hint_word = f / 64;
 }
 
+uint64_t pmm_alloc_frame(void)
+{
+    uint64_t flags = spin_lock_irqsave(&pmm_lock);
+    uint64_t r = alloc_frame_locked();
+    spin_unlock_irqrestore(&pmm_lock, flags);
+    return r;
+}
+
+uint64_t pmm_alloc_frames(uint64_t count)
+{
+    uint64_t flags = spin_lock_irqsave(&pmm_lock);
+    uint64_t r = alloc_frames_locked(count);
+    spin_unlock_irqrestore(&pmm_lock, flags);
+    return r;
+}
+
+void pmm_free_frame(uint64_t phys)
+{
+    uint64_t flags = spin_lock_irqsave(&pmm_lock);
+    free_frame_locked(phys);
+    spin_unlock_irqrestore(&pmm_lock, flags);
+}
+
 void pmm_free_frames(uint64_t phys, uint64_t count)
 {
+    uint64_t flags = spin_lock_irqsave(&pmm_lock);
     for (uint64_t i = 0; i < count; i++)
-        pmm_free_frame(phys + i * PAGE_SIZE);
+        free_frame_locked(phys + i * PAGE_SIZE);
+    spin_unlock_irqrestore(&pmm_lock, flags);
 }
 
 uint64_t pmm_total_frames(void)

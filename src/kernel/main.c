@@ -1,5 +1,6 @@
 #include <stdint.h>
 
+#include "arch/apic.h"
 #include "arch/cpu.h"
 #include "arch/gdt.h"
 #include "arch/idt.h"
@@ -7,6 +8,8 @@
 #include "arch/vga.h"
 #include "kernel/bootinfo.h"
 #include "kernel/printk.h"
+#include "kernel/sched.h"
+#include "kernel/sched_selftest.h"
 #include "mm/heap.h"
 #include "mm/mm.h"
 #include "mm/pmm.h"
@@ -81,7 +84,24 @@ void kmain(uint64_t mbi_phys)
     printk("MM SELFTEST: PASS (%d checks)\n", n);
     printk("PMM: %lu frames free after tests\n", (unsigned long)pmm_free_frame_count());
 
+    /* Phase 3: interrupts, timer, scheduler. */
+    sched_init();
+    sched_start();
+    printk("APIC: id %u, timer %u ticks per 10 ms, %d Hz scheduler tick\n", apic_id(),
+           apic_timer_ticks_per_10ms(), TIMER_HZ);
+    printk("Scheduler: %d priority levels, %d ms quantum, preemptive\n", SCHED_PRIO_LEVELS,
+           SCHED_QUANTUM_TICKS * 1000 / TIMER_HZ);
+
+    int n3 = sched_selftest();
+    printk("SCHED SELFTEST: PASS (%d checks, %lu context switches)\n", n3,
+           (unsigned long)sched_context_switches());
+    sched_dump();
+
     qemu_debug_exit(0x10); /* no-op unless QEMU has isa-debug-exit (used by `make test`) */
-    printk("Halted.\n");
-    halt_forever();
+
+    /* Normal runs: stay alive and show that the timer and scheduler keep working. */
+    for (;;) {
+        thread_sleep_ms(5000);
+        printk("uptime: %lu s\n", (unsigned long)(timer_ticks() / TIMER_HZ));
+    }
 }

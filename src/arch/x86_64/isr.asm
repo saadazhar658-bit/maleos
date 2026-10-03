@@ -1,10 +1,10 @@
-; CPU exception entry stubs (vectors 0-31).
+; Interrupt entry stubs for all 256 vectors.
 ;
 ; Vectors that push an error code: 8, 10-14, 17, 21, 29, 30. For the rest we push
 ; a dummy 0 so every handler sees the same struct interrupt_frame layout.
 
 bits 64
-extern exception_handler
+extern interrupt_dispatch
 
 %macro ISR_NOERR 1
 isr_%1:
@@ -22,7 +22,7 @@ isr_%1:
 section .text progbits alloc exec nowrite align=16
 
 %assign v 0
-%rep 32
+%rep 256
     %if v = 8 || (v >= 10 && v <= 14) || v = 17 || v = 21 || v = 29 || v = 30
         ISR_ERR v
     %else
@@ -50,7 +50,7 @@ isr_common:
 
     cld
     mov rdi, rsp                ; struct interrupt_frame *
-    call exception_handler      ; fatal for now; does not return
+    call interrupt_dispatch
 
     pop r15
     pop r14
@@ -74,7 +74,7 @@ section .rodata progbits alloc noexec nowrite align=8
 global isr_stub_table
 isr_stub_table:
 %assign v 0
-%rep 32
+%rep 256
     dq isr_ %+ v
     %assign v v + 1
 %endrep

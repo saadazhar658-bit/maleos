@@ -34,7 +34,8 @@ These rules keep the kernel readable, portable, and safe. Formatting is enforced
 - Validate every pointer and length that crosses the syscall boundary.
 - Keep interrupt handlers short; defer heavy work.
 - Do not use floating point or SSE in kernel code (the build flags disable it).
-- Document locking rules for any shared data structure.
+- Document locking rules for any shared data structure. Use `spin_lock_irqsave` for data touched from interrupt handlers; never sleep while holding a spinlock; respect the lock order heap → vmm → pmm.
+- Mutexes and semaphores are for thread context only, never interrupt handlers.
 - Mark intentionally unused values explicitly and avoid hidden global state.
 
 ## Architecture boundaries
@@ -52,4 +53,4 @@ These rules keep the kernel readable, portable, and safe. Formatting is enforced
 
 - `make test` must pass. It boots the ISO headless and checks the serial output.
 - New subsystems should print a clear status line to the serial log when they initialize.
-- Memory-management changes must keep `mm_selftest()` green; add checks for new behavior.
+- Memory-management changes must keep `mm_selftest()` green, and scheduler/IPC changes must keep `sched_selftest()` green; add checks for new behavior.

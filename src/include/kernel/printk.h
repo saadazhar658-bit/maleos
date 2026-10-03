@@ -4,11 +4,14 @@
 #include <stdarg.h>
 
 /*
- * Supported: %c %s %d %i %u %x %X %p %%, optional 0 flag and width,
+ * Supported: %c %s %d %i %u %x %X %p %%, optional 0 and - flags, width,
  * length modifiers l, ll and z.
  */
 void printk(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void vprintk(const char *fmt, va_list ap);
+
+/* Called before a fatal report so printk no longer waits on its own lock. */
+void printk_enter_panic(void);
 
 /* Print a message and halt the machine. */
 __attribute__((noreturn, format(printf, 1, 2))) void kpanic(const char *fmt, ...);
