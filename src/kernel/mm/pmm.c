@@ -88,6 +88,8 @@ void pmm_init(const struct boot_info *bi)
     reserve_range(0, 0x100000);
     reserve_range((uint64_t)__kernel_phys_start, (uint64_t)__kernel_phys_end);
     reserve_range(bi->mbi_phys, bi->mbi_phys + bi->mbi_size);
+    for (size_t i = 0; i < bi->module_count; i++)
+        reserve_range(bi->modules[i].start, bi->modules[i].end);
 
     frame_limit = highest_phys / PAGE_SIZE;
     for (uint64_t f = 0; f < frame_limit; f++) {

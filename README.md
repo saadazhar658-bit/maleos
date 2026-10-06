@@ -91,7 +91,7 @@ flowchart LR
 
 > **Legend:** ⬜ planned · 🟨 in progress · ✅ done
 >
-> **Current status:** Phases 0–3 complete. Next up: Phase 4 (basic I/O drivers).
+> **Current status:** Phases 0–5 complete. Next up: Phase 6 (userland execution).
 
 ### Phase 0 — Foundations & Tooling
 - ✅ Reproducible `x86_64-elf` cross-compiler setup (`scripts/build-toolchain.sh`)
@@ -125,16 +125,19 @@ flowchart LR
 - ✅ 179 in-kernel scheduler/IPC checks run on every boot and in CI
 
 ### Phase 4 — Basic I/O Drivers
-- ⬜ PS/2 keyboard driver
-- ⬜ PCI bus enumeration
-- ⬜ Storage drivers: IDE/PATA, then AHCI
-- ⬜ Driver Shim Layer API stabilized
+- ✅ ACPI MADT parsing and I/O APIC interrupt routing (with ISA overrides)
+- ✅ PS/2 keyboard driver (scancode set 1, blocking reads)
+- ✅ PCI bus enumeration (bridges, BAR sizing)
+- ✅ Storage drivers: IDE/PATA (PIO) and AHCI, behind a common block layer
+- ✅ Driver Shim Layer API (`struct driver`, PCI match tables)
+- ✅ 126 in-kernel driver/storage checks run on every boot and in CI
 
 ### Phase 5 — Virtual File System
-- ⬜ Core VFS abstractions (inode / vnode layouts)
-- ⬜ Initial ramdisk (initrd) support
-- ⬜ Lightweight on-disk filesystem (`ext2` or custom read-only index)
-- ⬜ File descriptor table and basic file syscalls
+- ✅ Core VFS abstractions (vnodes, superblocks, mount table, symlinks)
+- ✅ Initial ramdisk: ustar archive loaded by GRUB and unpacked into a writable ramfs
+- ✅ Read-only ext2 (1–16 KiB blocks, indirect levels, sparse files, symlinks)
+- ✅ File descriptor table and `open/read/write/lseek/readdir/stat/mkdir/unlink/symlink` API
+- ✅ 1519 in-kernel filesystem checks run on every boot and in CI
 
 ### Phase 6 — Userland Execution
 - ⬜ Privilege transitions via `syscall` / `sysret`
@@ -182,7 +185,14 @@ MM SELFTEST: PASS (117 checks)
 APIC: id 0, timer 625274 ticks per 10 ms, 100 Hz scheduler tick
 Scheduler: 8 priority levels, 30 ms quantum, preemptive
 SCHED SELFTEST: PASS (179 checks, 827 context switches)
+DRIVER SELFTEST: PASS (41 checks)
+STORAGE SELFTEST: PASS (85 checks)
+VFS: initrd unpacked, 23 entries (30720 bytes)
+VFS: mounted hda on /mnt (ext2, read-only)
+FS SELFTEST: PASS (1519 checks)
 ```
+
+Drivers: [docs/DRIVERS.md](docs/DRIVERS.md) · File system: [docs/FILESYSTEM.md](docs/FILESYSTEM.md).
 
 ---
 

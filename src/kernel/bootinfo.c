@@ -5,7 +5,10 @@
 #include "mm/mm.h"
 
 #define MB2_TAG_END 0
+#define MB2_TAG_MODULE 3
 #define MB2_TAG_MMAP 6
+#define MB2_TAG_ACPI_OLD 14
+#define MB2_TAG_ACPI_NEW 15
 
 struct mb2_tag {
     uint32_t type;
@@ -69,6 +72,33 @@ void bootinfo_parse(uint64_t mbi_phys, struct boot_info *out)
                 out->regions[out->region_count].length = ent->length;
                 out->regions[out->region_count].type = ent->type;
                 out->region_count++;
+            }
+        }
+
+        if (tag->type == MB2_TAG_MODULE && tag->size >= 16) {
+            const uint32_t *w = (const uint32_t *)tag;
+            if (out->module_count < BOOTINFO_MAX_MODULES) {
+                struct boot_module *m = &out->modules[out->module_count++];
+                m->start = w[2];
+                m->end = w[3];
+                size_t n = tag->size - 16;
+                if (n >= BOOTINFO_CMDLINE_MAX)
+                    n = BOOTINFO_CMDLINE_MAX - 1;
+                memcpy(m->name, (const uint8_t *)tag + 16, n);
+                m->name[n] = 0;
+            }
+        }
+
+        if ((tag->type == MB2_TAG_ACPI_OLD || tag->type == MB2_TAG_ACPI_NEW) &&
+            tag->size >= 8 + 20) {
+            size_t n = tag->size - 8;
+            if (n > sizeof(out->rsdp))
+                n = sizeof(out->rsdp);
+            /* Prefer the newer (ACPI 2+) RSDP if both tags exist. */
+            if (!out->has_rsdp || tag->type == MB2_TAG_ACPI_NEW) {
+                memset(out->rsdp, 0, sizeof(out->rsdp));
+                memcpy(out->rsdp, (const uint8_t *)tag + 8, n);
+                out->has_rsdp = true;
             }
         }
 

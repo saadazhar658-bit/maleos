@@ -5,7 +5,9 @@
 #   make iso      Package a bootable ISO (build/maleos.iso)
 #   make run      Boot the ISO in QEMU
 #   make debug    Boot paused with a GDB server on localhost:1234
-#   make test     Headless boot test (used by CI)
+#   make test     Headless boot test with test disks (used by CI)
+#   make input-test  Keyboard test: injects keys through the QEMU monitor
+#   make disks    Build the ext2 test disk images (needed by run/debug to see disks)
 #   make format   Format C sources with clang-format
 #   make clean    Remove build artifacts
 #   make help     Show this message
@@ -49,9 +51,14 @@ ASM_SRCS := $(shell find src -name '*.asm' 2>/dev/null)
 OBJS     := $(patsubst src/%.c,$(BUILD_DIR)/%.c.o,$(C_SRCS)) \
             $(patsubst src/%.asm,$(BUILD_DIR)/%.asm.o,$(ASM_SRCS))
 
-QEMU_FLAGS := -cdrom $(ISO) -m 256M -serial stdio -no-reboot
+# Attach the test disks to `make run` / `make debug` when they exist (see `make disks`).
+DISK_FLAGS := $(if $(wildcard build/disks/ide.img),-drive file=build/disks/ide.img,format=raw,if=ide,index=0 \
+              -drive file=build/disks/sata.img,format=raw,if=none,id=sata0 \
+              -device ich9-ahci,id=ahci -device ide-hd,drive=sata0,bus=ahci.0)
 
-.PHONY: all iso run debug test format clean help
+QEMU_FLAGS := -cdrom $(ISO) -m 256M -serial stdio -no-reboot $(DISK_FLAGS)
+
+.PHONY: all iso run debug test input-test disks format clean help
 all: $(KERNEL)
 
 $(BUILD_DIR)/%.c.o: src/%.c
@@ -68,10 +75,17 @@ $(KERNEL): $(OBJS) linker.ld
 
 iso: $(ISO)
 
-$(ISO): $(KERNEL) iso/boot/grub/grub.cfg
+INITRD     := $(BUILD_DIR)/initrd.tar
+INITRD_SRC := $(shell find initrd -type f 2>/dev/null) scripts/mkinitrd.sh
+
+$(INITRD): $(INITRD_SRC)
+	./scripts/mkinitrd.sh $@
+
+$(ISO): $(KERNEL) $(INITRD) iso/boot/grub/grub.cfg
 	@rm -rf $(ISO_DIR)
 	@mkdir -p $(ISO_DIR)/boot/grub
 	cp $(KERNEL) $(ISO_DIR)/boot/kernel.elf
+	cp $(INITRD) $(ISO_DIR)/boot/initrd.tar
 	cp iso/boot/grub/grub.cfg $(ISO_DIR)/boot/grub/grub.cfg
 	$(GRUB_MKRESCUE) -o $@ $(ISO_DIR) 2>/dev/null
 
@@ -85,6 +99,12 @@ debug: $(ISO)
 
 test: $(ISO)
 	./scripts/boot-test.sh $(ISO)
+
+input-test: $(ISO)
+	./scripts/input-test.sh $(ISO)
+
+disks:
+	./scripts/mkdisks.sh build/disks
 
 format:
 	@command -v clang-format >/dev/null || { echo "clang-format not installed"; exit 1; }

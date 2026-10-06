@@ -4,8 +4,16 @@
 #include "arch/cpu.h"
 #include "arch/gdt.h"
 #include "arch/idt.h"
+#include "arch/ioapic.h"
 #include "arch/serial.h"
 #include "arch/vga.h"
+#include "drivers/driver.h"
+#include "drivers/kbd.h"
+#include "drivers/pci.h"
+#include "drivers/selftest.h"
+#include "fs/fs_boot.h"
+#include "fs/vfs.h"
+#include "kernel/acpi.h"
 #include "kernel/bootinfo.h"
 #include "kernel/printk.h"
 #include "kernel/sched.h"
@@ -17,6 +25,20 @@
 #include "mm/vmm.h"
 
 static struct boot_info boot_info;
+
+/* Echoes every key press to the log. Runs only after the self-tests, so it never steals keys. */
+static void console_thread(void *arg)
+{
+    (void)arg;
+    printk("console: ready, waiting for keys\n");
+    for (;;) {
+        int k = kbd_getc();
+        if (k >= 0x20 && k < 0x7F)
+            printk("[console] key 0x%x '%c'\n", k, k);
+        else
+            printk("[console] key 0x%x\n", k);
+    }
+}
 
 static const char *region_type_name(uint32_t type)
 {
@@ -92,12 +114,40 @@ void kmain(uint64_t mbi_phys)
     printk("Scheduler: %d priority levels, %d ms quantum, preemptive\n", SCHED_PRIO_LEVELS,
            SCHED_QUANTUM_TICKS * 1000 / TIMER_HZ);
 
+    /* Phase 4: interrupt routing, buses, drivers. */
+    acpi_init(&boot_info);
+    ioapic_init(acpi_get());
+    printk("ACPI: %s, %d I/O APIC(s), %d IRQ override(s)\n",
+           acpi_get()->present ? "MADT found" : "no MADT (using defaults)", ioapic_count(),
+           acpi_get()->iso_count);
+
+    pci_init();
+    printk("PCI: %d device(s)\n", pci_device_count());
+    drivers_register_builtin();
+    drivers_probe_all();
+    pci_dump();
+
     int n3 = sched_selftest();
     printk("SCHED SELFTEST: PASS (%d checks, %lu context switches)\n", n3,
            (unsigned long)sched_context_switches());
     sched_dump();
 
+    int n4 = drivers_selftest();
+    printk("DRIVER SELFTEST: PASS (%d checks)\n", n4);
+
+    int n5 = storage_selftest();
+    if (n5 >= 0)
+        printk("STORAGE SELFTEST: PASS (%d checks)\n", n5);
+
+    /* Phase 5: virtual file system. */
+    vfs_init();
+    fs_boot_init(&boot_info);
+    int n6 = fs_selftest();
+    printk("FS SELFTEST: PASS (%d checks)\n", n6);
+
     qemu_debug_exit(0x10); /* no-op unless QEMU has isa-debug-exit (used by `make test`) */
+
+    thread_detach(thread_create("console", console_thread, NULL, SCHED_PRIO_NORMAL));
 
     /* Normal runs: stay alive and show that the timer and scheduler keep working. */
     for (;;) {

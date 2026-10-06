@@ -11,11 +11,15 @@ set -euo pipefail
 ISO="${1:-build/maleos.iso}"
 MEM="${MEM:-256M}"
 TIMEOUT="${TIMEOUT:-30}"
-MARKERS="${MARKERS:-MALEOS BOOT OK|MM SELFTEST: PASS|SCHED SELFTEST: PASS}"
+MARKERS="${MARKERS:-MALEOS BOOT OK|MM SELFTEST: PASS|SCHED SELFTEST: PASS|DRIVER SELFTEST: PASS|STORAGE SELFTEST: PASS|FS SELFTEST: PASS|ATA: hda|AHCI: sda}"
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT
 
 [ -f "$ISO" ] || { echo "error: ISO not found: $ISO (run 'make iso')" >&2; exit 2; }
+
+# Fresh test disks every run (ext2 images plus raw scratch space for the write tests).
+DISKS="${DISKS:-build/disks}"
+[ -n "${KEEP_DISKS:-}" ] || "$(dirname "$0")/mkdisks.sh" "$DISKS" >/dev/null
 
 # isa-debug-exit lets the guest terminate QEMU. The kernel writes 0x10, so a
 # clean exit status is (0x10 << 1) | 1 = 33.
@@ -24,6 +28,9 @@ timeout "$TIMEOUT" qemu-system-x86_64 \
     -cdrom "$ISO" \
     -m "$MEM" \
     -display none \
+    -drive "file=$DISKS/ide.img,format=raw,if=ide,index=0" \
+    -drive "file=$DISKS/sata.img,format=raw,if=none,id=sata0" \
+    -device ich9-ahci,id=ahci -device ide-hd,drive=sata0,bus=ahci.0 \
     -serial "file:$LOG" \
     -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
     -no-reboot
