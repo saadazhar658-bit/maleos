@@ -7,6 +7,7 @@
 #include "arch/gdt.h"
 #include "arch/irq.h"
 #include "kernel/printk.h"
+#include "kernel/process.h"
 #include "kernel/sched.h"
 
 struct idt_entry {
@@ -124,6 +125,8 @@ static void report_exception(struct interrupt_frame *f)
 void interrupt_dispatch(struct interrupt_frame *f)
 {
     if (f->vector < 32) {
+        if ((f->cs & 3) == 3)
+            process_user_fault(f); /* a user program misbehaved: kill it, not the kernel */
         report_exception(f);
         halt_forever();
     }

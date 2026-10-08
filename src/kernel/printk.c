@@ -155,6 +155,17 @@ void vprintk(const char *fmt, va_list ap)
         spin_unlock_irqrestore(&print_lock, flags);
 }
 
+void printk_write(const char *buf, size_t n)
+{
+    uint64_t flags = 0;
+    if (!panicking)
+        flags = spin_lock_irqsave(&print_lock);
+    for (size_t i = 0; i < n; i++)
+        console_putc(buf[i]);
+    if (!panicking)
+        spin_unlock_irqrestore(&print_lock, flags);
+}
+
 void printk(const char *fmt, ...)
 {
     va_list ap;

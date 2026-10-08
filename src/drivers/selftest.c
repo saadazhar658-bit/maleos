@@ -159,7 +159,10 @@ static void test_ioapic(void)
     CHECK((e & 0xFF) == 0x31, "keyboard vector programmed");
     CHECK(!(e & (1u << 16)), "keyboard input unmasked");
 
-    uint64_t t = ioapic_read_entry(ioapic_isa_to_gsi(4)); /* COM1: nobody routed it */
+    uint64_t c = ioapic_read_entry(ioapic_isa_to_gsi(4)); /* COM1: the console routes it */
+    CHECK(c != ~0ULL && (c & 0xFF) == 0x32 && !(c & (1u << 16)), "serial input routed");
+
+    uint64_t t = ioapic_read_entry(ioapic_isa_to_gsi(3)); /* COM2: nobody routed it */
     CHECK(t != ~0ULL && (t & (1u << 16)), "unused inputs stay masked");
 }
 

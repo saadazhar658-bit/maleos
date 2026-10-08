@@ -5,7 +5,9 @@
 #include "arch/gdt.h"
 #include "arch/idt.h"
 #include "arch/ioapic.h"
+#include "arch/power.h"
 #include "arch/serial.h"
+#include "arch/syscall.h"
 #include "arch/vga.h"
 #include "drivers/driver.h"
 #include "drivers/kbd.h"
@@ -15,9 +17,12 @@
 #include "fs/vfs.h"
 #include "kernel/acpi.h"
 #include "kernel/bootinfo.h"
+#include "kernel/console.h"
 #include "kernel/printk.h"
+#include "kernel/process.h"
 #include "kernel/sched.h"
 #include "kernel/sched_selftest.h"
+#include "kernel/userland_selftest.h"
 #include "mm/heap.h"
 #include "mm/mm.h"
 #include "mm/pmm.h"
@@ -25,20 +30,6 @@
 #include "mm/vmm.h"
 
 static struct boot_info boot_info;
-
-/* Echoes every key press to the log. Runs only after the self-tests, so it never steals keys. */
-static void console_thread(void *arg)
-{
-    (void)arg;
-    printk("console: ready, waiting for keys\n");
-    for (;;) {
-        int k = kbd_getc();
-        if (k >= 0x20 && k < 0x7F)
-            printk("[console] key 0x%x '%c'\n", k, k);
-        else
-            printk("[console] key 0x%x\n", k);
-    }
-}
 
 static const char *region_type_name(uint32_t type)
 {
@@ -121,6 +112,10 @@ void kmain(uint64_t mbi_phys)
            acpi_get()->present ? "MADT found" : "no MADT (using defaults)", ioapic_count(),
            acpi_get()->iso_count);
 
+    console_init();
+    syscall_init();
+    process_init();
+
     pci_init();
     printk("PCI: %d device(s)\n", pci_device_count());
     drivers_register_builtin();
@@ -145,13 +140,24 @@ void kmain(uint64_t mbi_phys)
     int n6 = fs_selftest();
     printk("FS SELFTEST: PASS (%d checks)\n", n6);
 
+    /* Phase 6: user mode. */
+    int n7 = userland_selftest();
+    printk("USER SELFTEST: PASS (%d checks)\n", n7);
+
     qemu_debug_exit(0x10); /* no-op unless QEMU has isa-debug-exit (used by `make test`) */
 
-    thread_detach(thread_create("console", console_thread, NULL, SCHED_PRIO_NORMAL));
+    console_start();
 
-    /* Normal runs: stay alive and show that the timer and scheduler keep working. */
-    for (;;) {
-        thread_sleep_ms(5000);
-        printk("uptime: %lu s\n", (unsigned long)(timer_ticks() / TIMER_HZ));
+    /* Phase 6: hand the machine to user space. */
+    printk("Starting /bin/init\n");
+    const char *init_argv[] = {"init"};
+    int pid = process_spawn("/bin/init", init_argv, 1, NULL, 0, "/", 0);
+    if (pid < 0)
+        printk("init: cannot start /bin/init (error %d)\n", pid);
+    else {
+        int status = 0;
+        process_wait(pid, 0, &status);
+        printk("init exited with status %d\n", status);
     }
+    machine_poweroff();
 }

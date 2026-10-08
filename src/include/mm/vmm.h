@@ -41,6 +41,18 @@ int vmm_protect(uint64_t pml4, uint64_t virt, uint32_t prot);
  */
 void *vmm_ioremap(uint64_t phys, uint64_t size);
 
+/*
+ * Per-process address spaces. A new space shares the kernel half (PML4 entries 256..511,
+ * all pre-populated at boot so later kernel mappings are visible everywhere) and has an
+ * empty user half. vmm_map() with VMM_USER populates it.
+ */
+uint64_t vmm_space_create(void); /* physical address of the new PML4, 0 on failure */
+/*
+ * Free the user half: every mapped user page *and its frame*, all page tables, and the
+ * PML4. The space must not be active on any CPU. User frames are never shared.
+ */
+void vmm_space_destroy(uint64_t pml4);
+
 /* Walk the tables. Returns false if unmapped. phys/prot may be NULL. */
 bool vmm_translate(uint64_t pml4, uint64_t virt, uint64_t *phys, uint32_t *prot);
 

@@ -19,6 +19,7 @@
 #define THREAD_NAME_MAX 24
 
 struct ipc_port;
+struct process;
 
 /* Callee-saved registers pushed by context_switch(); rip is the return address. */
 struct context {
@@ -41,6 +42,8 @@ struct thread {
     struct context *ctx; /* saved stack pointer while not running */
     int kstack_slot;     /* -1 for the boot thread */
     uint64_t kstack_base;
+    uint64_t kstack_top;  /* initial stack pointer; 0 for the boot thread */
+    struct process *proc; /* user process this thread runs, or NULL for a kernel thread */
 
     struct list_node sched_node; /* run queue OR the wait queue it is blocked on */
     struct list_node sleep_node; /* timed sleep / timeout list */
@@ -102,6 +105,10 @@ void sched_dump(void);
 uint64_t thread_table_lock(void);
 void thread_table_unlock(uint64_t flags);
 struct thread *thread_lookup(uint64_t tid); /* table must be locked */
+
+/* Called by schedule() just before switching to `next`: loads its address space and kernel stack.
+ */
+void sched_switch_hook(struct thread *next);
 
 /* internal: called by the interrupt dispatcher */
 void sched_irq_exit(void);

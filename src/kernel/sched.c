@@ -92,6 +92,7 @@ static void schedule(void)
     next->state = T_RUNNING;
     current_thread = next;
     switches++;
+    sched_switch_hook(next);
     context_switch(&prev->ctx, next->ctx);
     /* We are running again; `current_thread` is us. */
 }
@@ -309,6 +310,7 @@ struct thread *thread_create(const char *name, void (*entry)(void *), void *arg,
 
     t->entry = entry;
     t->arg = arg;
+    t->kstack_top = top;
 
     /*
      * Build the initial stack so the first context_switch() "returns" into the trampoline:

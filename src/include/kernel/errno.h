@@ -4,11 +4,16 @@
 /* Error numbers (Linux values). Kernel functions return them negated: -ENOENT. */
 #define EPERM 1
 #define ENOENT 2
+#define ESRCH 3
+#define E2BIG 7
+#define ENOEXEC 8
+#define ECHILD 10
 #define EIO 5
 #define ENXIO 6
 #define EBADF 9
 #define ENOMEM 12
 #define EACCES 13
+#define EFAULT 14
 #define EBUSY 16
 #define EEXIST 17
 #define EXDEV 18
@@ -18,6 +23,7 @@
 #define EINVAL 22
 #define EMFILE 24
 #define EFBIG 27
+#define ERANGE 34
 #define ENOSPC 28
 #define ESPIPE 29
 #define EROFS 30

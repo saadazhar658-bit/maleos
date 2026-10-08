@@ -316,6 +316,62 @@ void vmm_init(const struct boot_info *bi)
 
     write_cr3(kernel_pml4); /* the boot identity map disappears here */
     hhdm_ready = true;
+
+    /*
+     * Give every kernel-half PML4 slot its own PDPT now. Address spaces created later copy
+     * these entries, so any kernel mapping added afterwards (heap growth, MMIO, stacks) lands
+     * in tables all of them share.
+     */
+    uint64_t *top_table = table_virt(kernel_pml4);
+    for (int i = 256; i < 512; i++) {
+        if (top_table[i] & PTE_PRESENT)
+            continue;
+        uint64_t t = alloc_table();
+        if (!t)
+            kpanic("vmm: out of memory pre-populating the kernel half");
+        top_table[i] = t | PTE_PRESENT | PTE_WRITE;
+    }
+}
+
+uint64_t vmm_space_create(void)
+{
+    uint64_t pml4 = alloc_table();
+    if (!pml4)
+        return 0;
+    uint64_t *dst = table_virt(pml4);
+    const uint64_t *src = table_virt(kernel_pml4);
+    for (int i = 256; i < 512; i++)
+        dst[i] = src[i];
+    return pml4;
+}
+
+/* level 1 = page table (entries map frames), 2 = page directory, 3 = PDPT. */
+static void free_subtree(uint64_t phys, int level)
+{
+    uint64_t *t = table_virt(phys);
+    for (int i = 0; i < 512; i++) {
+        if (!(t[i] & PTE_PRESENT))
+            continue;
+        if (t[i] & PTE_HUGE)
+            kpanic("vmm: large page in a user address space");
+        if (level == 1)
+            pmm_free_frame(t[i] & PTE_ADDR);
+        else
+            free_subtree(t[i] & PTE_ADDR, level - 1);
+    }
+    pmm_free_frame(phys);
+}
+
+void vmm_space_destroy(uint64_t pml4)
+{
+    if (pml4 == kernel_pml4 || pml4 == read_cr3())
+        kpanic("vmm: destroying an address space that is in use");
+    uint64_t *t = table_virt(pml4);
+    for (int i = 0; i < 256; i++) {
+        if (t[i] & PTE_PRESENT)
+            free_subtree(t[i] & PTE_ADDR, 3);
+    }
+    pmm_free_frame(pml4);
 }
 
 uint64_t vmm_kernel_pml4(void)

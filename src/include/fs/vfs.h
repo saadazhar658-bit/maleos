@@ -5,57 +5,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "abi/abi.h"
 #include "drivers/block.h"
 #include "kernel/errno.h"
 
-#define VFS_NAME_MAX 255
-#define VFS_PATH_MAX 1024
 #define VFS_MAX_FDS 64
 #define VFS_FD_FIRST 3 /* 0-2 are kept free for stdin/stdout/stderr */
 #define VFS_MAX_MOUNTS 8
 #define VFS_MAX_SYMLINKS 8
-
-/* ---- user-visible types (same numeric values as POSIX/Linux) ---- */
-
-#define S_IFMT 0170000
-#define S_IFREG 0100000
-#define S_IFDIR 0040000
-#define S_IFLNK 0120000
-#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
-#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
-#define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)
-
-#define O_RDONLY 0
-#define O_WRONLY 1
-#define O_RDWR 2
-#define O_ACCMODE 3
-#define O_CREAT 0000100
-#define O_EXCL 0000200
-#define O_TRUNC 0001000
-#define O_APPEND 0002000
-#define O_DIRECTORY 0200000
-#define O_NOFOLLOW 0400000
-
-#define SEEK_SET 0
-#define SEEK_CUR 1
-#define SEEK_END 2
-
-enum vtype { VT_REG = 1, VT_DIR, VT_LNK, VT_OTHER };
-
-struct dirent {
-    uint64_t ino;
-    uint8_t type; /* enum vtype */
-    char name[VFS_NAME_MAX + 1];
-};
-
-struct stat {
-    uint64_t dev; /* id of the mounted filesystem */
-    uint64_t ino;
-    uint32_t mode; /* S_IF* | permission bits */
-    uint32_t nlink;
-    uint64_t size;
-    uint32_t blksize;
-};
 
 /* ---- filesystem driver interface ---- */
 

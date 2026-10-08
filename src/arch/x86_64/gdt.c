@@ -19,8 +19,8 @@ struct gdt_ptr {
     uint64_t base;
 } __attribute__((packed));
 
-/* null, kernel code, kernel data, TSS (two slots) */
-static uint64_t gdt[5] __attribute__((aligned(16)));
+/* null, kernel code, kernel data, user code32 (unused), user data, user code, TSS (two slots) */
+static uint64_t gdt[8] __attribute__((aligned(16)));
 static struct tss tss;
 
 /* Dedicated stack for double faults so a blown kernel stack is still reported. */
@@ -33,6 +33,9 @@ void gdt_init(void)
     gdt[0] = 0;
     gdt[1] = 0x00AF9A000000FFFFULL; /* 64-bit code, DPL 0 */
     gdt[2] = 0x00CF92000000FFFFULL; /* data, DPL 0 */
+    gdt[3] = 0x00CFFA000000FFFFULL; /* 32-bit code, DPL 3 (only fills SYSRET's slot) */
+    gdt[4] = 0x00CFF2000000FFFFULL; /* data, DPL 3 */
+    gdt[5] = 0x00AFFA000000FFFFULL; /* 64-bit code, DPL 3 */
 
     tss.rsp[0] = (uint64_t)__stack_top;
     tss.ist[0] = (uint64_t)(df_stack + sizeof(df_stack)); /* IST1 */
@@ -40,9 +43,9 @@ void gdt_init(void)
 
     uint64_t base = (uint64_t)&tss;
     uint64_t limit = sizeof(tss) - 1;
-    gdt[3] = (limit & 0xFFFF) | ((base & 0xFFFFFF) << 16) | (0x89ULL << 40) |
+    gdt[6] = (limit & 0xFFFF) | ((base & 0xFFFFFF) << 16) | (0x89ULL << 40) |
              (((limit >> 16) & 0xF) << 48) | (((base >> 24) & 0xFF) << 56);
-    gdt[4] = base >> 32;
+    gdt[7] = base >> 32;
 
     struct gdt_ptr ptr = {.limit = sizeof(gdt) - 1, .base = (uint64_t)gdt};
     __asm__ volatile("lgdt %0" : : "m"(ptr));
@@ -65,4 +68,9 @@ void gdt_init(void)
                      : "rax", "memory");
 
     __asm__ volatile("ltr %0" : : "r"((uint16_t)TSS_SEL));
+}
+
+void gdt_set_rsp0(uint64_t rsp0)
+{
+    tss.rsp[0] = rsp0;
 }

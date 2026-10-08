@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-#define KSTACK_PAGES 4      /* usable stack: 16 KiB */
-#define KSTACK_SLOT_PAGES 8 /* virtual slot: guard page + stack + unmapped slack */
+#define KSTACK_PAGES 8       /* usable stack: 32 KiB (path walking and syscalls are stack hungry) */
+#define KSTACK_SLOT_PAGES 10 /* virtual slot: guard page + stack + unmapped slack */
 #define KSTACK_MAX 512
 
 /*
