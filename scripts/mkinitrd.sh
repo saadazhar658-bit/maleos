@@ -1,14 +1,27 @@
 #!/usr/bin/env bash
 # Pack initrd/ (plus a few generated test files) into a ustar archive.
-#   usage: scripts/mkinitrd.sh [output.tar]
+#   usage: scripts/mkinitrd.sh [output.tar [user-build-dir]]
+#   User programs from <dir>/bin go to /bin and <dir>/test to /tests.
 set -euo pipefail
 
 OUT="${1:-build/initrd.tar}"
+USERDIR="${2:-}"
 SRC="$(cd "$(dirname "$0")/.." && pwd)/initrd"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 cp -a "$SRC/." "$WORK/"
+
+if [ -n "$USERDIR" ]; then
+    for sub in bin:bin test:tests; do
+        from="$USERDIR/${sub%%:*}"; to="$WORK/${sub##*:}"
+        if [ -d "$from" ]; then
+            mkdir -p "$to"
+            cp "$from"/* "$to"/
+            chmod 755 "$to"/*
+        fi
+    done
+fi
 
 python3 - "$WORK" <<'PY'
 import os, sys

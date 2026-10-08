@@ -4,6 +4,7 @@
 #
 # Environment:
 #   MEM      guest RAM size            (default 256M)
+#   CPU      QEMU -cpu model           (default: QEMU64; "max" turns on SMEP/SMAP)
 #   TIMEOUT  seconds before giving up  (default 30)
 #   MARKERS  '|'-separated list of strings that must appear
 set -euo pipefail
@@ -11,7 +12,7 @@ set -euo pipefail
 ISO="${1:-build/maleos.iso}"
 MEM="${MEM:-256M}"
 TIMEOUT="${TIMEOUT:-30}"
-MARKERS="${MARKERS:-MALEOS BOOT OK|MM SELFTEST: PASS|SCHED SELFTEST: PASS|DRIVER SELFTEST: PASS|STORAGE SELFTEST: PASS|FS SELFTEST: PASS|ATA: hda|AHCI: sda}"
+MARKERS="${MARKERS:-MALEOS BOOT OK|MM SELFTEST: PASS|SCHED SELFTEST: PASS|DRIVER SELFTEST: PASS|STORAGE SELFTEST: PASS|FS SELFTEST: PASS|USER SELFTEST: PASS|ATA: hda|AHCI: sda}"
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT
 
@@ -27,6 +28,7 @@ set +e
 timeout "$TIMEOUT" qemu-system-x86_64 \
     -cdrom "$ISO" \
     -m "$MEM" \
+    ${CPU:+-cpu "$CPU"} \
     -display none \
     -drive "file=$DISKS/ide.img,format=raw,if=ide,index=0" \
     -drive "file=$DISKS/sata.img,format=raw,if=none,id=sata0" \

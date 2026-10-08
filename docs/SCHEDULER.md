@@ -20,7 +20,7 @@ Phase 3 design notes. Source: `src/kernel/sched.c`, `sync.c`, `ipc.c`, `kstack.c
 
 | Item | Value |
 |---|---|
-| Kernel stack | 16 KiB mapped, one unmapped guard page below, in the region at `KSTACK_BASE` |
+| Kernel stack | 32 KiB mapped, one unmapped guard page below, in the region at `KSTACK_BASE` |
 | Max threads | 512 (`KSTACK_MAX`) |
 | States | `READY`, `RUNNING`, `BLOCKED`, `SLEEPING`, `ZOMBIE` |
 | Exit | `thread_exit(code)` or returning from the entry function |

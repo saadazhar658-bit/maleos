@@ -12,6 +12,7 @@ maleos/
 │   ├── SCHEDULER.md              Interrupts, scheduler, locking, IPC (Phase 3)
 │   ├── DRIVERS.md                ACPI/PCI, driver shim, keyboard, storage (Phase 4)
 │   ├── FILESYSTEM.md             VFS, ramfs, initrd, ext2 (Phase 5)
+│   ├── USERLAND.md               Syscalls, address spaces, ELF loader, shell (Phase 6)
 │   └── REPOSITORY_LAYOUT.md      This file
 ├── iso/boot/grub/grub.cfg        GRUB menu packaged into the ISO
 ├── scripts/
@@ -19,9 +20,16 @@ maleos/
 │   ├── build-toolchain.sh        Optional x86_64-elf cross compiler build
 │   ├── boot-test.sh              Headless QEMU boot test (attaches test disks)
 │   ├── input-test.sh             Keyboard end-to-end test via the QEMU monitor
+│   ├── shell-test.py             Shell end-to-end test over the serial console
 │   ├── mkdisks.sh                Build the ext2 test disk images
-│   └── mkinitrd.sh               Pack initrd/ into build/initrd.tar
+│   └── mkinitrd.sh               Pack initrd/ (and built user programs) into build/initrd.tar
 ├── initrd/                       Files unpacked into "/" at boot
+├── user/
+│   ├── include/ulib.h            Syscall wrappers and mini libc declarations
+│   ├── lib/                      string, stdio, crt0
+│   ├── bin/                      init, sh and utilities (installed in /bin)
+│   ├── test/                     Test programs (installed in /tests)
+│   └── user.ld                   User linker script
 ├── src/
 │   ├── arch/x86_64/              boot.asm, GDT/IDT/ISR stubs, APIC, context switch, serial, VGA
 │   ├── drivers/                  PCI, driver shim, keyboard, block layer, ATA, AHCI
@@ -33,6 +41,9 @@ maleos/
 │       ├── printk.c, string.c    Kernel printf, mem*/str* helpers
 │       ├── sched.c, sync.c       Scheduler, threads, mutex/semaphore
 │       ├── ipc.c, kstack.c       Message ports, per-thread kernel stacks
+│       ├── process.c, elf.c      Processes, spawn/wait/exit, ELF loader
+│       ├── syscall.c, console.c  Syscall handlers, console
+│       ├── userland_selftest.c   User-mode self-test
 │       ├── spinlock.c            Deadlock report for spinlocks
 │       └── mm/                   pmm.c, vmm.c, heap.c, selftest.c
 ├── CONTRIBUTING.md
@@ -51,6 +62,7 @@ maleos/
 | Scheduler, threads, IPC | `src/kernel/` (done) |
 | Drivers and driver shim | `src/drivers/` (done) |
 | VFS and filesystems | `src/fs/` (done) |
+| Userland programs | `user/` (done) |
 | Network stack | `src/net/` |
 
 `make` discovers every `.c` and `.asm` file under `src/` automatically, so new files need no Makefile changes.
