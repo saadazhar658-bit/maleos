@@ -91,7 +91,7 @@ flowchart LR
 
 > **Legend:** ⬜ planned · 🟨 in progress · ✅ done
 >
-> **Current status:** Phases 0–5 complete. Next up: Phase 6 (userland execution).
+> **Current status:** Phases 0–6 complete. Next up: Phase 7 (hardening & expansion).
 
 ### Phase 0 — Foundations & Tooling
 - ✅ Reproducible `x86_64-elf` cross-compiler setup (`scripts/build-toolchain.sh`)
@@ -140,11 +140,12 @@ flowchart LR
 - ✅ 1519 in-kernel filesystem checks run on every boot and in CI
 
 ### Phase 6 — Userland Execution
-- ⬜ Privilege transitions via `syscall` / `sysret`
-- ⬜ ELF binary loader
-- ⬜ Per-process address spaces
-- ⬜ First user process (`init`)
-- ⬜ Interactive shell
+- ✅ Privilege transitions via `syscall` (28 calls), SMEP/SMAP when available
+- ✅ ELF binary loader (static `ET_EXEC`, W^X enforced)
+- ✅ Per-process address spaces with user-pointer validation
+- ✅ First user process (`init`) and a tiny libc
+- ✅ Interactive shell with 15 utilities, redirection and serial/keyboard console
+- ✅ 264 in-kernel user-mode checks on every boot, plus end-to-end shell tests
 
 ### Phase 7 — Hardening & Expansion *(new)*
 - ⬜ Kernel test suite and fuzzing of the syscall surface
@@ -164,7 +165,7 @@ flowchart LR
 | Kernel image | `0xFFFFFFFF80000000` + phys | `.text` RX, `.rodata` R, `.data`/`.bss` RW+NX | Per-section W^X |
 | Kernel stack guard | lowest page of the stack | unmapped | Overflow faults instead of corrupting memory |
 | MMIO | `0xFFFFE00000000000` | RW, NX, uncached | Device registers via `vmm_ioremap()` |
-| Thread stacks | `0xFFFFE80000000000` | RW, NX | 16 KiB each, unmapped guard page below every stack |
+| Thread stacks | `0xFFFFE80000000000` | RW, NX | 32 KiB each, unmapped guard page below every stack |
 
 No mapping is ever writable and executable at once, and the boot identity map is removed after paging is set up.
 Details and design notes: [docs/MEMORY.md](docs/MEMORY.md).
@@ -185,14 +186,35 @@ MM SELFTEST: PASS (117 checks)
 APIC: id 0, timer 625274 ticks per 10 ms, 100 Hz scheduler tick
 Scheduler: 8 priority levels, 30 ms quantum, preemptive
 SCHED SELFTEST: PASS (179 checks, 827 context switches)
-DRIVER SELFTEST: PASS (41 checks)
+DRIVER SELFTEST: PASS (42 checks)
 STORAGE SELFTEST: PASS (85 checks)
 VFS: initrd unpacked, 23 entries (30720 bytes)
 VFS: mounted hda on /mnt (ext2, read-only)
 FS SELFTEST: PASS (1519 checks)
+USER SELFTEST: PASS (264 checks)
+Starting /bin/init
+init: Maleos userland started (pid 809)
+Maleos shell. Type 'help' for commands.
+maleos:/$
 ```
 
-Drivers: [docs/DRIVERS.md](docs/DRIVERS.md) · File system: [docs/FILESYSTEM.md](docs/FILESYSTEM.md).
+Userland: [docs/USERLAND.md](docs/USERLAND.md) · Drivers: [docs/DRIVERS.md](docs/DRIVERS.md) · File system: [docs/FILESYSTEM.md](docs/FILESYSTEM.md).
+
+---
+
+## 💻 Userland
+
+`make run` boots into a shell on the serial console and keyboard:
+
+```text
+maleos:/$ ls /bin
+maleos:/$ echo hello > /tmp/a
+maleos:/$ cat /tmp/a
+hello
+maleos:/$ poweroff
+```
+
+Static ELF programs run in ring 3 with their own address space. See [docs/USERLAND.md](docs/USERLAND.md) for the syscall ABI, memory layout and limits.
 
 ---
 
@@ -272,6 +294,10 @@ gdb -ex "target remote localhost:1234" -ex "symbol-file build/kernel.elf"
 | `make run` | Boot the ISO in QEMU |
 | `make debug` | Boot paused with a GDB server on port 1234 |
 | `make test` | Headless boot test (what CI runs); try `MEM=2G make test` |
+| `CPU=max make test` | Same, with SMEP/SMAP enabled |
+| `make input-test` | Types a command through the PS/2 keyboard into the shell |
+| `make shell-test` | Runs ~40 shell commands over the serial console |
+| `make user` | Build only the user programs |
 | `make format` | Format C sources with clang-format |
 | `make clean` | Remove build artifacts |
 
