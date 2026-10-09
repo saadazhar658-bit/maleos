@@ -40,7 +40,7 @@ NASM    ?= nasm
 QEMU    ?= qemu-system-x86_64
 GRUB_MKRESCUE ?= grub-mkrescue
 
-CFLAGS  := -std=c11 -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone \
+CFLAGS  := -std=c11 -ffreestanding -fstack-protector-strong -mstack-protector-guard=global -fno-pic -mno-red-zone \
            -mcmodel=kernel -mno-mmx -mno-sse -mno-sse2 \
            -fno-tree-loop-distribute-patterns \
            -Wall -Wextra -Werror -O2 -g -Isrc/include -MMD -MP
@@ -53,7 +53,7 @@ OBJS     := $(patsubst src/%.c,$(BUILD_DIR)/%.c.o,$(C_SRCS)) \
             $(patsubst src/%.asm,$(BUILD_DIR)/%.asm.o,$(ASM_SRCS))
 
 # ---- user space (Phase 6): a tiny libc, programs in user/bin, test programs in user/test ----
-USER_CFLAGS  := -std=c11 -ffreestanding -fno-stack-protector -fno-pic -mno-mmx -mno-sse \
+USER_CFLAGS  := -std=c11 -ffreestanding -fstack-protector-strong -mstack-protector-guard=global -fno-pic -mno-mmx -mno-sse \
                 -mno-sse2 -fno-tree-loop-distribute-patterns -Wall -Wextra -Werror -O2 -g \
                 -Isrc/include -Iuser/include -MMD -MP
 USER_LDFLAGS := -n -nostdlib -z noexecstack -z max-page-size=0x1000 -T user/user.ld

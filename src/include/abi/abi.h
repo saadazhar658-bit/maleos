@@ -88,7 +88,9 @@ struct stat {
 #define SYS_MEMINFO 25   /* (struct abi_meminfo *) */
 #define SYS_POWEROFF 26  /* () does not return */
 #define SYS_FTRUNCATE 27 /* (fd, size) */
-#define SYS_COUNT 28
+#define SYS_GETRANDOM 28 /* (buf, len) -> len; len <= ABI_RANDOM_MAX */
+#define SYS_COUNT 29
+#define ABI_RANDOM_MAX 256
 
 #define ABI_MAX_ARGS 16 /* argv entries accepted by SYS_SPAWN (including argv[0]) */
 #define ABI_ARG_MAX 256 /* bytes per argument including the NUL */

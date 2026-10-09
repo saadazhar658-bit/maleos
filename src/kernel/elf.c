@@ -2,6 +2,7 @@
 
 #include "kernel/errno.h"
 #include "kernel/process.h"
+#include "kernel/random.h"
 #include "kernel/string.h"
 #include "mm/mm.h"
 #include "mm/uspace.h"
@@ -116,8 +117,15 @@ int elf_load(struct process *p, const void *image, size_t size, uint64_t *entry)
     if (loaded == 0 || !entry_ok)
         return -ENOEXEC;
 
-    p->brk_base = p->brk = image_end;
-    p->brk_limit = image_end + (uint64_t)PROC_HEAP_PAGES * PAGE_SIZE;
+    /* ASLR: slide the heap by up to 256 pages (1 MiB), as long as it still fits. */
+    uint64_t heap_base = image_end;
+    uint64_t slide = (random_u64() % PROC_HEAP_ASLR_PAGES) * PAGE_SIZE;
+    uint64_t aligned = ALIGN_UP(image_end, PAGE_SIZE);
+    if (aligned <= USER_IMAGE_MAX &&
+        slide < USER_IMAGE_MAX - aligned - (uint64_t)PROC_HEAP_PAGES * PAGE_SIZE)
+        heap_base = aligned + slide;
+    p->brk_base = p->brk = heap_base;
+    p->brk_limit = heap_base + (uint64_t)PROC_HEAP_PAGES * PAGE_SIZE;
     if (p->brk_limit > USER_IMAGE_MAX)
         p->brk_limit = USER_IMAGE_MAX;
     *entry = eh.entry;

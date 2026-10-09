@@ -141,6 +141,11 @@ static inline long ftruncate(int fd, unsigned long size)
     return syscall3(SYS_FTRUNCATE, fd, (long)size, 0);
 }
 
+static inline long getrandom(void *buf, unsigned long len)
+{
+    return syscall3(SYS_GETRANDOM, (long)buf, (long)len, 0);
+}
+
 /* ---- strings ---- */
 size_t strlen(const char *s);
 int strcmp(const char *a, const char *b);

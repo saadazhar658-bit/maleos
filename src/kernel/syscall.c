@@ -8,10 +8,15 @@
 #include "kernel/errno.h"
 #include "kernel/printk.h"
 #include "kernel/process.h"
+#include "kernel/random.h"
 #include "kernel/sched.h"
 #include "kernel/string.h"
 #include "mm/pmm.h"
 #include "mm/uspace.h"
+
+/* 32-bit arguments (descriptors, pids, flags): a 64-bit value that does not fit is invalid,
+ * not silently truncated (1<<32 must not alias descriptor 0). */
+#define ARG_INT(x) (((int64_t)(x) == (int64_t)(int)(x)) ? (int)(x) : -1)
 
 /*
  * System call dispatcher. Every pointer argument is validated and copied with the uspace_*
@@ -314,6 +319,17 @@ static sysret sys_procinfo(struct process *p, uint64_t ubuf, uint64_t max)
     return rc < 0 ? rc : n;
 }
 
+static sysret sys_getrandom(struct process *p, uint64_t ubuf, uint64_t len)
+{
+    if (len > ABI_RANDOM_MAX)
+        return -EINVAL;
+    uint8_t buf[ABI_RANDOM_MAX];
+    random_bytes(buf, len);
+    int rc = uspace_copy_out(p->pml4, ubuf, buf, len);
+    memset(buf, 0, sizeof(buf));
+    return rc < 0 ? rc : (sysret)len;
+}
+
 static sysret sys_meminfo(struct process *p, uint64_t ubuf)
 {
     struct abi_meminfo mi = {
@@ -331,23 +347,23 @@ static sysret do_syscall(struct process *p, uint64_t nr, uint64_t a0, uint64_t a
     case SYS_EXIT:
         process_exit((int)(a0 & 0xFF));
     case SYS_WRITE:
-        return sys_write(p, (int)a0, a1, a2);
+        return sys_write(p, ARG_INT(a0), a1, a2);
     case SYS_READ:
-        return sys_read(p, (int)a0, a1, a2);
+        return sys_read(p, ARG_INT(a0), a1, a2);
     case SYS_OPEN:
         return sys_open(p, a0, a1);
     case SYS_CLOSE:
-        return sys_close(p, (int)a0);
+        return sys_close(p, ARG_INT(a0));
     case SYS_LSEEK: {
-        struct pfile *pf = vfs_file(p, (int)a0);
-        return pf ? vfs_lseek(pf->vfs_fd, (int64_t)a1, (int)a2) : -EBADF;
+        struct pfile *pf = vfs_file(p, ARG_INT(a0));
+        return pf ? vfs_lseek(pf->vfs_fd, (int64_t)a1, ARG_INT(a2)) : -EBADF;
     }
     case SYS_STAT:
         return sys_stat(p, a0, a1, true);
     case SYS_LSTAT:
         return sys_stat(p, a0, a1, false);
     case SYS_FSTAT: {
-        struct pfile *pf = vfs_file(p, (int)a0);
+        struct pfile *pf = vfs_file(p, ARG_INT(a0));
         if (!pf)
             return -EBADF;
         struct stat st;
@@ -355,7 +371,7 @@ static sysret do_syscall(struct process *p, uint64_t nr, uint64_t a0, uint64_t a
         return rc < 0 ? rc : uspace_copy_out(p->pml4, a1, &st, sizeof(st));
     }
     case SYS_READDIR:
-        return sys_readdir(p, (int)a0, a1);
+        return sys_readdir(p, ARG_INT(a0), a1);
     case SYS_MKDIR:
     case SYS_RMDIR:
     case SYS_UNLINK:
@@ -403,7 +419,7 @@ static sysret do_syscall(struct process *p, uint64_t nr, uint64_t a0, uint64_t a
     case SYS_SPAWN:
         return sys_spawn(p, a0, a1, a2);
     case SYS_WAIT:
-        return sys_wait(p, (int)a0, a1);
+        return sys_wait(p, ARG_INT(a0), a1);
     case SYS_SBRK: {
         uint64_t old;
         int rc = process_sbrk(p, (int64_t)a0, &old);
@@ -415,8 +431,10 @@ static sysret do_syscall(struct process *p, uint64_t nr, uint64_t a0, uint64_t a
         return sys_meminfo(p, a0);
     case SYS_POWEROFF:
         machine_poweroff();
+    case SYS_GETRANDOM:
+        return sys_getrandom(p, a0, a1);
     case SYS_FTRUNCATE: {
-        struct pfile *pf = vfs_file(p, (int)a0);
+        struct pfile *pf = vfs_file(p, ARG_INT(a0));
         return pf ? vfs_ftruncate(pf->vfs_fd, a1) : -EBADF;
     }
     default:

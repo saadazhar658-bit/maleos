@@ -6,6 +6,7 @@
 #include "fs/vfs.h"
 #include "kernel/errno.h"
 #include "kernel/printk.h"
+#include "kernel/random.h"
 #include "kernel/spinlock.h"
 #include "kernel/string.h"
 #include "mm/heap.h"
@@ -218,7 +219,7 @@ static void close_all_fds(struct process *p)
 /* Copy argv onto the new stack: strings at the top, then argc, argv[] and a NULL. */
 static int build_stack(struct process *p, const char *const *argv, int argc)
 {
-    uint64_t top = USER_STACK_TOP;
+    uint64_t top = USER_STACK_TOP - (random_u64() % PROC_STACK_ASLR_PAGES) * PAGE_SIZE;
     uint64_t base = top - (uint64_t)USER_STACK_PAGES * PAGE_SIZE;
     int rc = process_map(p, base, USER_STACK_PAGES, VMM_WRITE);
     if (rc < 0)

@@ -16,7 +16,7 @@ When CPUID reports them, SMEP and SMAP are enabled (QEMU needs `-cpu max`). All 
 
 | Group | Calls |
 |---|---|
-| Process | `exit`, `getpid`, `yield`, `sleep_ms`, `uptime_ms`, `spawn`, `wait`, `sbrk`, `procinfo`, `meminfo`, `poweroff` |
+| Process | `exit`, `getpid`, `yield`, `sleep_ms`, `uptime_ms`, `spawn`, `wait`, `sbrk`, `procinfo`, `meminfo`, `getrandom`, `poweroff` |
 | Files | `open`, `close`, `read`, `write`, `lseek`, `stat`, `lstat`, `fstat`, `readdir`, `mkdir`, `rmdir`, `unlink`, `symlink`, `readlink`, `chdir`, `getcwd`, `ftruncate` |
 
 `spawn(path, argv, attr)` creates a child running the given ELF (up to 16 arguments of 256 bytes). The optional `abi_spawn_attr` redirects the child's stdout to a file (`O_TRUNC` / `O_APPEND`). `wait(pid, &status)` blocks until the child exits; status is the exit code, or an `EXIT_SIG*` value if it was killed by a fault.
@@ -27,7 +27,7 @@ When CPUID reports them, SMEP and SMAP are enabled (QEMU needs `-cpu max`). All 
 |---|---|---|
 | Image | `0x400000` upward (min `0x10000`) | Segments mapped by the loader with their own permissions |
 | Heap | after the image | `sbrk`, at most 2048 pages |
-| Stack | top at `0x00007FFFFFFFF000` | 16 pages, unmapped guard page below |
+| Stack | top at `0x00007FFFFFFFF000` minus a random 0..511 pages | 16 pages, unmapped guard page below |
 | Kernel | PML4 entries 256..511 | Shared by every process; pre-populated so later kernel mappings are visible everywhere |
 
 Each process is limited to 4096 pages. `vmm_space_destroy` frees all user pages, tables and the PML4. Spawn/exit cycles are checked for frame, heap, fd and process-slot leaks.
@@ -52,7 +52,7 @@ Accepts static x86-64 `ET_EXEC` files only. Rules: at most 16 program headers, n
 
 | Test | What it covers |
 |---|---|
-| `USER SELFTEST` (every boot) | 264 checks: programs, 18 fault kinds, concurrency and table saturation, orphans, console input, ELF mutations and 600 random header flips, leak checks |
+| `USER SELFTEST` (every boot) | 496 checks: programs, 18 fault kinds, concurrency and table saturation, orphans, console input, ELF mutations and 600 random header flips, stack protector and ASLR, syscall fuzzing, leak checks |
 | `make shell-test` | Boots to the prompt and runs ~40 shell commands over serial, including `exit 3` with respawn and `poweroff` (`--mem`, `--cpu` options) |
 | `make input-test` | Types a command through the PS/2 keyboard and checks the shell ran it |
 | `CPU=max make test` | Boot test with SMEP and SMAP enabled |

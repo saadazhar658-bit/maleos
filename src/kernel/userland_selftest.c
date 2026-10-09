@@ -6,9 +6,11 @@
 #include "kernel/errno.h"
 #include "kernel/printk.h"
 #include "kernel/process.h"
+#include "kernel/random.h"
 #include "kernel/sched.h"
 #include "kernel/string.h"
 #include "mm/heap.h"
+#include "mm/mm.h"
 #include "mm/pmm.h"
 
 static int checks;
@@ -179,6 +181,79 @@ static void test_console_input(void)
 
 /* ---------- the ELF loader ---------- */
 
+/* ---------- hardening ---------- */
+
+static uint64_t parse_hex(const char **pp)
+{
+    const char *p = *pp;
+    uint64_t v = 0;
+    while ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f'))
+        v = v * 16 + (uint64_t)(*p <= '9' ? *p - '0' : *p - 'a' + 10), p++;
+    *pp = p;
+    return v;
+}
+
+#define ASLR_RUNS 24
+
+static void test_hardening(void)
+{
+    /* Canary: random, with a zero low byte. */
+    CHECK((__stack_chk_guard & 0xff) == 0, "the canary has a zero byte");
+    CHECK(__stack_chk_guard != 0x595e9fbd94fda766UL, "the canary was randomised at boot");
+
+    uint64_t a = random_u64(), b = random_u64(), c = random_u64();
+    CHECK(a != b && b != c && a != c, "random_u64 does not repeat");
+
+    /* A user-space buffer overflow is caught by the stack protector. */
+    CHECK_EQ(run0("/tests/t_smash"), 134, "user stack protector kills the overflowing program");
+
+    /* ASLR: the stack and the heap start at different addresses across runs. */
+    uint64_t stacks[ASLR_RUNS], heaps[ASLR_RUNS];
+    for (int i = 0; i < ASLR_RUNS; i++) {
+        const char *argv[] = {"t_aslr"};
+        int pid = process_spawn("/tests/t_aslr", argv, 1, "/tmp/aslr.out", O_TRUNC, "/", 0);
+        CHECK(pid > 0, "t_aslr starts");
+        int st = -1;
+        CHECK_EQ(process_wait(pid, 0, &st), pid, "t_aslr is waited for");
+        CHECK_EQ(st, 0, "t_aslr exit status");
+        char buf[64] = {0};
+        CHECK(vfs_read_file("/tmp/aslr.out", buf, sizeof(buf) - 1) > 3, "t_aslr output");
+        const char *q = buf;
+        stacks[i] = parse_hex(&q);
+        CHECK(*q == ' ', "t_aslr output format");
+        q++;
+        heaps[i] = parse_hex(&q);
+        CHECK(stacks[i] < USER_STACK_TOP && stacks[i] > USER_STACK_TOP - 0x2000000UL,
+              "stack address in range");
+        CHECK(heaps[i] >= 0x400000 && heaps[i] < 0x400000 + 0x2000000UL, "heap address in range");
+        CHECK((heaps[i] & (PAGE_SIZE - 1)) == 0, "heap start is page aligned");
+    }
+    vfs_unlink("/tmp/aslr.out");
+    int ds = 0, dh = 0;
+    for (int i = 0; i < ASLR_RUNS; i++) {
+        bool ns = true, nh = true;
+        for (int j = 0; j < i; j++) {
+            ns &= stacks[j] != stacks[i];
+            nh &= heaps[j] != heaps[i];
+        }
+        ds += ns;
+        dh += nh;
+    }
+    CHECK(ds >= 12, "the stack address varies between runs");
+    CHECK(dh >= 12, "the heap address varies between runs");
+}
+
+static void test_fuzz(void)
+{
+    static const char *const seeds[] = {"1", "2", "3", "4", "5", "6", "7", "8"};
+    for (size_t i = 0; i < sizeof(seeds) / sizeof(seeds[0]); i++) {
+        const char *argv[] = {"t_fuzz", seeds[i], "2500"};
+        CHECK_EQ(run("/tests/t_fuzz", 3, argv), 0, "syscall fuzzer finds no bad result");
+        CHECK_EQ(process_count(), 0, "fuzzer process is gone");
+        CHECK_EQ(vfs_open_file_count(), 0, "fuzzer left no descriptors behind");
+    }
+}
+
 static uint16_t rd16(const uint8_t *p)
 {
     return (uint16_t)(p[0] | (p[1] << 8));
@@ -335,6 +410,17 @@ int userland_selftest(void)
     /* Warm-up: the first run allocates things that stay allocated (page tables, etc.). */
     run0("/tests/t_hello");
     vfs_unlink("/tmp/t_hello.out");
+    {
+        /* The fuzzer makes files of up to 1 MB; that raises the heap's high-water mark once. */
+        int fd = vfs_open("/tmp/warmup", O_RDWR | O_CREAT);
+        if (fd >= 0) {
+            vfs_ftruncate(fd, 1000000);
+            vfs_close(fd);
+            vfs_unlink("/tmp/warmup");
+        }
+        const char *fa[] = {"t_fuzz", "99", "2500"};
+        run("/tests/t_fuzz", 3, fa);
+    }
     uint64_t frames = pmm_free_frame_count();
     uint64_t heap = heap_used();
 
@@ -344,6 +430,8 @@ int userland_selftest(void)
     test_orphans();
     test_console_input();
     test_elf_loader();
+    test_hardening();
+    test_fuzz();
 
     /* The programs leave marker files behind; remove them so the leak check is exact. */
     vfs_unlink("/tmp/t_hello.out");

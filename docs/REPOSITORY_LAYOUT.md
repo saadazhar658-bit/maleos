@@ -12,6 +12,7 @@ maleos/
 │   ├── SCHEDULER.md              Interrupts, scheduler, locking, IPC (Phase 3)
 │   ├── DRIVERS.md                ACPI/PCI, driver shim, keyboard, storage (Phase 4)
 │   ├── FILESYSTEM.md             VFS, ramfs, initrd, ext2 (Phase 5)
+│   ├── HARDENING.md              Stack protector, ASLR, fuzzing (Phase 7a)
 │   ├── USERLAND.md               Syscalls, address spaces, ELF loader, shell (Phase 6)
 │   └── REPOSITORY_LAYOUT.md      This file
 ├── iso/boot/grub/grub.cfg        GRUB menu packaged into the ISO
@@ -41,6 +42,7 @@ maleos/
 │       ├── printk.c, string.c    Kernel printf, mem*/str* helpers
 │       ├── sched.c, sync.c       Scheduler, threads, mutex/semaphore
 │       ├── ipc.c, kstack.c       Message ports, per-thread kernel stacks
+│       ├── random.c              Entropy, stack canary
 │       ├── process.c, elf.c      Processes, spawn/wait/exit, ELF loader
 │       ├── syscall.c, console.c  Syscall handlers, console
 │       ├── userland_selftest.c   User-mode self-test
