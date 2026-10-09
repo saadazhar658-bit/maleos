@@ -91,7 +91,7 @@ flowchart LR
 
 > **Legend:** ⬜ planned · 🟨 in progress · ✅ done
 >
-> **Current status:** Phases 0–6 complete. Next up: Phase 7 (hardening & expansion).
+> **Current status:** Phases 0–6 complete; Phase 7a (hardening) done. Next up: network stack (7b) and SMP (7c).
 
 ### Phase 0 — Foundations & Tooling
 - ✅ Reproducible `x86_64-elf` cross-compiler setup (`scripts/build-toolchain.sh`)
@@ -145,13 +145,14 @@ flowchart LR
 - ✅ Per-process address spaces with user-pointer validation
 - ✅ First user process (`init`) and a tiny libc
 - ✅ Interactive shell with 15 utilities, redirection and serial/keyboard console
-- ✅ 264 in-kernel user-mode checks on every boot, plus end-to-end shell tests
+- ✅ 496 in-kernel user-mode checks on every boot, plus end-to-end shell tests
 
 ### Phase 7 — Hardening & Expansion *(new)*
-- ⬜ Kernel test suite and fuzzing of the syscall surface
+- ✅ Syscall fuzzer (8 seeds × 2500 calls on every boot) and hardening tests
 - ⬜ Network stack (NIC driver, ARP, IP, TCP/UDP)
 - ⬜ SMP (multi-core) support
-- ⬜ Stack protector, KASLR, and other mitigations
+- ✅ Stack protector (kernel and user), random source, user-space ASLR (stack, heap)
+- ⬜ Kernel image KASLR (needs a relocatable kernel)
 - ⬜ Documentation site and a tagged `v0.1.0` release
 
 ---
@@ -175,6 +176,7 @@ Details and design notes: [docs/MEMORY.md](docs/MEMORY.md).
 ```text
 Maleos kernel starting
 GDT/IDT loaded
+Random: seeded from RDRAND, stack canary armed
 Physical memory map:
   [0000000000100000 - 000000000ffe0000) usable
   ...
@@ -191,14 +193,14 @@ STORAGE SELFTEST: PASS (85 checks)
 VFS: initrd unpacked, 23 entries (30720 bytes)
 VFS: mounted hda on /mnt (ext2, read-only)
 FS SELFTEST: PASS (1519 checks)
-USER SELFTEST: PASS (264 checks)
+USER SELFTEST: PASS (496 checks)
 Starting /bin/init
 init: Maleos userland started (pid 809)
 Maleos shell. Type 'help' for commands.
 maleos:/$
 ```
 
-Userland: [docs/USERLAND.md](docs/USERLAND.md) · Drivers: [docs/DRIVERS.md](docs/DRIVERS.md) · File system: [docs/FILESYSTEM.md](docs/FILESYSTEM.md).
+Userland: [docs/USERLAND.md](docs/USERLAND.md) · Hardening: [docs/HARDENING.md](docs/HARDENING.md) · Drivers: [docs/DRIVERS.md](docs/DRIVERS.md) · File system: [docs/FILESYSTEM.md](docs/FILESYSTEM.md).
 
 ---
 
