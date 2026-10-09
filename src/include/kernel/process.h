@@ -18,6 +18,8 @@
 #define USER_STACK_TOP 0x00007FFFFFFFF000ULL /* the page above the stack stays unmapped */
 #define USER_STACK_PAGES 16                  /* 64 KiB; the page below is an unmapped guard */
 #define PROC_PAGE_QUOTA 4096                 /* at most 16 MiB of user pages per process */
+#define PROC_HEAP_ASLR_PAGES 256             /* heap start slides by up to this many pages */
+#define PROC_STACK_ASLR_PAGES 512            /* stack top slides down by up to this many pages */
 #define PROC_HEAP_PAGES 2048                 /* sbrk limit: 8 MiB */
 #define ELF_MAX_SIZE (4u << 20)
 

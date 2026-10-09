@@ -20,6 +20,7 @@
 #include "kernel/console.h"
 #include "kernel/printk.h"
 #include "kernel/process.h"
+#include "kernel/random.h"
 #include "kernel/sched.h"
 #include "kernel/sched_selftest.h"
 #include "kernel/userland_selftest.h"
@@ -59,7 +60,7 @@ static void print_memory_map(void)
     }
 }
 
-void kmain(uint64_t mbi_phys)
+__attribute__((no_stack_protector)) void kmain(uint64_t mbi_phys)
 {
     /* Phase 1 essentials: output, segmentation, exception handling. */
     serial_init();
@@ -69,6 +70,7 @@ void kmain(uint64_t mbi_phys)
     gdt_init();
     idt_init();
     printk("GDT/IDT loaded\n");
+    random_init();
 
     /* Phase 2: memory management. */
     bootinfo_parse(mbi_phys, &boot_info);
