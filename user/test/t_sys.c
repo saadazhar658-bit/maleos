@@ -4,7 +4,6 @@
 
 #define KERNEL_PTR 0xFFFF800000000000ULL
 #define UNMAPPED 0x10000000UL
-#define STACK_TOP 0x00007FFFFFFFF000UL
 
 static int failures;
 static int check_no;
@@ -18,8 +17,11 @@ static void expect(long got, long want)
     }
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    (void)argc;
+    /* The stack top is randomised: the argument strings sit in its highest page. */
+    unsigned long stack_top = ((unsigned long)argv[0] + 4095) & ~4095UL;
     char buf[64];
     struct stat st;
 
@@ -64,7 +66,7 @@ int main(void)
     /* A buffer that ends exactly at the top of the stack: a read cannot be partial. */
     long fd = open("/etc/motd", O_RDONLY);
     expect(fd >= 3, 1);
-    expect(read((int)fd, (void *)(STACK_TOP - 8), 16), -EFAULT);
+    expect(read((int)fd, (void *)(stack_top - 8), 16), -EFAULT);
     close((int)fd);
 
     /* Paths. */
