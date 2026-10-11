@@ -91,7 +91,7 @@ flowchart LR
 
 > **Legend:** ⬜ planned · 🟨 in progress · ✅ done
 >
-> **Current status:** Phases 0–6 complete; Phase 7a (hardening) done. Next up: network stack (7b) and SMP (7c).
+> **Current status:** Phases 0–6 complete; Phase 7a (hardening) and 7b (network stack) done. Next up: SMP (7c).
 
 ### Phase 0 — Foundations & Tooling
 - ✅ Reproducible `x86_64-elf` cross-compiler setup (`scripts/build-toolchain.sh`)
@@ -149,7 +149,7 @@ flowchart LR
 
 ### Phase 7 — Hardening & Expansion *(new)*
 - ✅ Syscall fuzzer (8 seeds × 2500 calls on every boot) and hardening tests
-- ⬜ Network stack (NIC driver, ARP, IP, TCP/UDP)
+- ✅ Network stack (e1000, ARP, IPv4, ICMP, UDP, TCP, sockets; see docs/NETWORK.md)
 - ⬜ SMP (multi-core) support
 - ✅ Stack protector (kernel and user), random source, user-space ASLR (stack, heap)
 - ⬜ Kernel image KASLR (needs a relocatable kernel)
@@ -298,6 +298,7 @@ gdb -ex "target remote localhost:1234" -ex "symbol-file build/kernel.elf"
 | `make test` | Headless boot test (what CI runs); try `MEM=2G make test` |
 | `CPU=max make test` | Same, with SMEP/SMAP enabled |
 | `make input-test` | Types a command through the PS/2 keyboard into the shell |
+| `make net-test` | Boots with an e1000 NIC; HTTP, TCP/UDP echo, ping, wget and nc against the host |
 | `make shell-test` | Runs ~40 shell commands over the serial console |
 | `make user` | Build only the user programs |
 | `make format` | Format C sources with clang-format |

@@ -146,6 +146,9 @@ test: $(ISO)
 input-test: $(ISO)
 	./scripts/input-test.sh $(ISO)
 
+net-test: $(ISO)
+	python3 scripts/net-test.py $(ISO)
+
 shell-test: $(ISO)
 	python3 scripts/shell-test.py $(ISO)
 
