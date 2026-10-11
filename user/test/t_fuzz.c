@@ -29,7 +29,29 @@ static long pick(const long *tab, int n)
     return tab[rnd() % (unsigned)n];
 }
 
-enum kind { K_ANY, K_PATH, K_MPATH, K_TARGET, K_FD, K_PTR, K_LEN, K_FLAGS, K_NONE };
+enum kind {
+    K_ANY,
+    K_PATH,
+    K_MPATH,
+    K_TARGET,
+    K_FD,
+    K_PTR,
+    K_LEN,
+    K_FLAGS,
+    K_NONE,
+    K_SOCKTYPE,
+    K_SADDR,
+    K_DGRAM,
+    K_SOCKOP,
+    K_SMALL,
+    K_PINGIP,
+    K_PINGTO
+};
+
+#define NADDR 8
+static struct abi_sockaddr addrs[NADDR];
+static struct abi_dgram dgs[NADDR];
+static long known_port = 6000;
 
 static long gen_ptr(void)
 {
@@ -107,6 +129,22 @@ static long gen_target(void)
     return (long)t[rnd() % (sizeof(t) / sizeof(t[0]))];
 }
 
+static long gen_small(void)
+{
+    static const long t[] = {0, 1, 2, 3, 8, 9, 100, -1, 1L << 32};
+    return pick(t, sizeof(t) / sizeof(t[0]));
+}
+
+static long gen_object(const void *tab, size_t size)
+{
+    uint64_t r = rnd() % 8;
+    if (r == 0)
+        return gen_bad_ptr();
+    if (r == 1)
+        return gen_ptr();
+    return (long)((const char *)tab + (rnd() % NADDR) * size);
+}
+
 static long gen_flags(void)
 {
     static const long t[] = {O_RDONLY,
@@ -132,6 +170,34 @@ static long gen(enum kind k)
         return gen_path(1);
     case K_TARGET:
         return gen_target();
+    case K_SOCKTYPE: {
+        static const long t[] = {SOCK_STREAM, SOCK_STREAM, SOCK_DGRAM, SOCK_DGRAM,
+                                 0,           3,           -1,         1L << 32};
+        return pick(t, sizeof(t) / sizeof(t[0]));
+    }
+    case K_SADDR:
+        return gen_object(addrs, sizeof(addrs[0]));
+    case K_DGRAM:
+        return gen_object(dgs, sizeof(dgs[0]));
+    case K_SOCKOP: {
+        static const long t[] = {SOCKCTL_RCVTIMEO,
+                                 SOCKCTL_NONBLOCK,
+                                 SOCKCTL_SHUT_WR,
+                                 SOCKCTL_GETNAME,
+                                 SOCKCTL_REUSEADDR,
+                                 0,
+                                 99,
+                                 -1};
+        return pick(t, sizeof(t) / sizeof(t[0]));
+    }
+    case K_SMALL:
+        return gen_small();
+    case K_PINGIP: {
+        static const long t[] = {0x7F000001L, 0x7F000001L, 0x7F010203L, 0x0A00020FL, 0, -1};
+        return pick(t, sizeof(t) / sizeof(t[0]));
+    }
+    case K_PINGTO:
+        return 1 + (long)(rnd() % 30);
     case K_FD:
         return gen_fd();
     case K_PTR:
@@ -166,6 +232,11 @@ static const struct sig sigs[SYS_COUNT] = {
     [SYS_WAIT] = {{K_ANY, K_PTR, K_NONE}},         [SYS_SBRK] = {{K_ANY, K_NONE, K_NONE}},
     [SYS_PROCINFO] = {{K_PTR, K_LEN, K_NONE}},     [SYS_MEMINFO] = {{K_PTR, K_NONE, K_NONE}},
     [SYS_FTRUNCATE] = {{K_FD, K_LEN, K_NONE}},     [SYS_GETRANDOM] = {{K_PTR, K_LEN, K_NONE}},
+    [SYS_SOCKET] = {{K_SOCKTYPE, K_NONE, K_NONE}}, [SYS_BIND] = {{K_FD, K_SADDR, K_NONE}},
+    [SYS_LISTEN] = {{K_FD, K_SMALL, K_NONE}},      [SYS_ACCEPT] = {{K_FD, K_PTR, K_NONE}},
+    [SYS_CONNECT] = {{K_FD, K_SADDR, K_NONE}},     [SYS_SENDTO] = {{K_FD, K_DGRAM, K_NONE}},
+    [SYS_RECVFROM] = {{K_FD, K_DGRAM, K_NONE}},    [SYS_SOCKCTL] = {{K_FD, K_SOCKOP, K_SMALL}},
+    [SYS_NETINFO] = {{K_PTR, K_NONE, K_NONE}},     [SYS_PING] = {{K_PINGIP, K_PINGTO, K_SMALL}},
 };
 
 static int usable(long nr)
@@ -225,6 +296,22 @@ int main(int argc, char **argv)
     for (unsigned i = 0; i < sizeof(scratch); i++)
         scratch[i] = (char)rnd();
     mkdir("/tmp/fz");
+    /* connect() to an address that does not answer blocks for ~15 s of SYN retries, so addresses
+     * for bind/connect are local ones; datagram destinations may also be the gateway or broadcast.
+     */
+    static const uint32_t ips[] = {0x7F000001u, 0x7F000001u, 0x7F010203u, 0x0A00020Fu,
+                                   0x7F000001u, 0x0A00020Fu, 0x7F000001u};
+    static const uint32_t dips[] = {0x7F000001u, 0,           0xFFFFFFFFu, 0x0A000202u,
+                                    0x0A00020Fu, 0x7F000001u, 0x7F010203u};
+    static const uint16_t ports[] = {0, 1, 7, 6000, 6001, 7, 65535, 49152};
+    for (int i = 0; i < NADDR; i++) {
+        addrs[i].ip = ips[rnd() % 7];
+        addrs[i].port = (rnd() % 3 == 0) ? (uint16_t)known_port : ports[rnd() % 8];
+        dgs[i].buf = rnd() % 5 == 0 ? (void *)gen_ptr() : (void *)&scratch[rnd() % 4096];
+        dgs[i].len = rnd() % 3 ? (uint64_t)(rnd() % 3000) : (uint64_t)gen_len();
+        dgs[i].addr.ip = dips[rnd() % 7];
+        dgs[i].addr.port = addrs[(i + 3) % NADDR].port;
+    }
 
     long ok = 0, err = 0, bad = 0;
     for (long i = 0; i < iters; i++) {
@@ -250,7 +337,15 @@ int main(int argc, char **argv)
                                      -1, -4096, 1L << 40, -(1L << 40), 8192};
             a[0] = pick(t, sizeof(t) / sizeof(t[0]));
         }
+        if (nr == SYS_SOCKCTL && a[1] == SOCKCTL_NONBLOCK)
+            a[2] = 1; /* never turn off non-blocking: a blocked call would hang the fuzzer */
+        if (nr == SYS_SPAWN)
+            a[2] = 0;
         long r = syscall3(nr, a[0], a[1], a[2]);
+        if ((nr == SYS_SOCKET || nr == SYS_ACCEPT) && r >= 0)
+            syscall3(SYS_SOCKCTL, r, SOCKCTL_NONBLOCK, 1);
+        if (nr == SYS_SOCKCTL && a[1] == SOCKCTL_GETNAME && r >= 49152)
+            known_port = r;
         if (r >= 0) {
             ok++;
         } else if (r >= -4095) {

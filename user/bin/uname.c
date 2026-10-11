@@ -2,6 +2,6 @@
 
 int main(void)
 {
-    puts("Maleos 0.6 x86_64");
+    puts("Maleos 0.7 x86_64");
     return 0;
 }

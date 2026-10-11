@@ -108,6 +108,36 @@ long atol(const char *s)
 const char *strerror(int err)
 {
     switch (err) {
+    case EAGAIN:
+        return "try again";
+    case EPIPE:
+        return "broken pipe";
+    case ENOTSOCK:
+        return "not a socket";
+    case EDESTADDRREQ:
+        return "destination address required";
+    case EMSGSIZE:
+        return "message too long";
+    case EPROTONOSUPPORT:
+        return "protocol not supported";
+    case EOPNOTSUPP:
+        return "operation not supported";
+    case EADDRINUSE:
+        return "address already in use";
+    case ENETUNREACH:
+        return "network unreachable";
+    case ECONNRESET:
+        return "connection reset by peer";
+    case EISCONN:
+        return "already connected";
+    case ENOTCONN:
+        return "not connected";
+    case ETIMEDOUT:
+        return "timed out";
+    case ECONNREFUSED:
+        return "connection refused";
+    case EHOSTUNREACH:
+        return "host unreachable";
     case EPERM:
         return "operation not permitted";
     case ENOENT:
@@ -163,4 +193,31 @@ const char *strerror(int err)
     default:
         return "error";
     }
+}
+
+int parse_ip(const char *s, uint32_t *ip)
+{
+    uint32_t v = 0;
+    for (int part = 0; part < 4; part++) {
+        if (*s < '0' || *s > '9')
+            return -1;
+        unsigned n = 0;
+        int digits = 0;
+        while (*s >= '0' && *s <= '9') {
+            n = n * 10 + (unsigned)(*s - '0');
+            if (++digits > 3 || n > 255)
+                return -1;
+            s++;
+        }
+        v = (v << 8) | n;
+        if (part < 3) {
+            if (*s != '.')
+                return -1;
+            s++;
+        }
+    }
+    if (*s)
+        return -1;
+    *ip = v;
+    return 0;
 }

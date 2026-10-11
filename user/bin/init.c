@@ -5,6 +5,19 @@ int main(void)
 {
     printf("\ninit: Maleos userland started (pid %ld)\n", getpid());
 
+    /* Network services; they simply fail to start if there is nothing to bind to. */
+    static char *const daemons[][3] = {
+        {"/bin/httpd", "httpd", NULL},
+        {"/bin/echod", "echod", NULL},
+        {"/bin/echod", "echod", "udp"},
+    };
+    for (unsigned i = 0; i < sizeof(daemons) / sizeof(daemons[0]); i++) {
+        char *dargv[] = {daemons[i][1], daemons[i][2], NULL};
+        long dpid = spawn(daemons[i][0], dargv, NULL);
+        if (dpid >= 0)
+            printf("init: started %s (pid %ld)\n", daemons[i][1], dpid);
+    }
+
     int quick_exits = 0;
     for (;;) {
         unsigned long started = uptime_ms();

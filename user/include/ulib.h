@@ -8,6 +8,7 @@
  */
 
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -145,6 +146,57 @@ static inline long getrandom(void *buf, unsigned long len)
 {
     return syscall3(SYS_GETRANDOM, (long)buf, (long)len, 0);
 }
+
+/* ---- sockets (IPv4 addresses are in host byte order) ---- */
+static inline long socket(int type)
+{
+    return syscall3(SYS_SOCKET, type, 0, 0);
+}
+static inline long bind(int fd, uint32_t ip, uint16_t port)
+{
+    struct abi_sockaddr a = {ip, port, 0};
+    return syscall3(SYS_BIND, fd, (long)&a, 0);
+}
+static inline long listen(int fd, int backlog)
+{
+    return syscall3(SYS_LISTEN, fd, backlog, 0);
+}
+static inline long accept(int fd, struct abi_sockaddr *peer)
+{
+    return syscall3(SYS_ACCEPT, fd, (long)peer, 0);
+}
+static inline long connect(int fd, uint32_t ip, uint16_t port)
+{
+    struct abi_sockaddr a = {ip, port, 0};
+    return syscall3(SYS_CONNECT, fd, (long)&a, 0);
+}
+static inline long sendto(int fd, const void *buf, size_t len, uint32_t ip, uint16_t port)
+{
+    struct abi_dgram d = {(void *)buf, len, {ip, port, 0}};
+    return syscall3(SYS_SENDTO, fd, (long)&d, 0);
+}
+static inline long recvfrom(int fd, void *buf, size_t len, struct abi_sockaddr *from)
+{
+    struct abi_dgram d = {buf, len, {0, 0, 0}};
+    long n = syscall3(SYS_RECVFROM, fd, (long)&d, 0);
+    if (from)
+        *from = d.addr;
+    return n;
+}
+static inline long sockctl(int fd, int op, long value)
+{
+    return syscall3(SYS_SOCKCTL, fd, op, value);
+}
+static inline long netinfo(struct abi_netinfo *ni)
+{
+    return syscall3(SYS_NETINFO, (long)ni, 0, 0);
+}
+static inline long ping(uint32_t ip, unsigned timeout_ms, unsigned seq)
+{
+    return syscall3(SYS_PING, (long)ip, timeout_ms, seq);
+}
+/* Parse "a.b.c.d" into host byte order. Returns 0 or -1. */
+int parse_ip(const char *s, uint32_t *ip);
 
 /* ---- strings ---- */
 size_t strlen(const char *s);
