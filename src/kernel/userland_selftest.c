@@ -12,6 +12,7 @@
 #include "mm/heap.h"
 #include "mm/mm.h"
 #include "mm/pmm.h"
+#include "net/net_priv.h"
 
 static int checks;
 
@@ -63,6 +64,20 @@ static bool file_is(const char *path, const char *want)
     return n == (int64_t)strlen(want) && memcmp(buf, want, (size_t)n) == 0;
 }
 
+static uint64_t heap_mapped(void)
+{
+    struct heap_stats hs;
+    heap_get_stats(&hs);
+    return hs.mapped_bytes;
+}
+
+/* Wait for TCP connections left by user programs (TIME_WAIT) to disappear. */
+static void net_idle(void)
+{
+    for (int i = 0; i < 100 && tcp_connection_count() > 0; i++)
+        thread_sleep_ms(100);
+}
+
 static uint64_t heap_used(void)
 {
     struct heap_stats hs;
@@ -85,6 +100,8 @@ static void test_basic_programs(void)
     CHECK_EQ(run0("/tests/t_files"), 0, "file system calls from user space");
     CHECK_EQ(run0("/tests/t_spawn"), 0, "spawn, wait and redirection");
     CHECK_EQ(run0("/tests/t_sys"), 0, "invalid system call arguments are rejected");
+    CHECK_EQ(run0("/tests/t_net"), 0, "sockets from user space");
+    CHECK_EQ(sock_count(), 0, "sockets are closed when a program ends");
     CHECK_EQ(run1("/tests/t_iso", "1"), 0, "isolation test, single instance");
     CHECK_EQ(process_count(), 0, "no process left behind");
 }
@@ -421,8 +438,10 @@ int userland_selftest(void)
         const char *fa[] = {"t_fuzz", "99", "2500"};
         run("/tests/t_fuzz", 3, fa);
     }
+    net_idle();
     uint64_t frames = pmm_free_frame_count();
     uint64_t heap = heap_used();
+    uint64_t mapped = heap_mapped();
 
     test_basic_programs();
     test_faults();
@@ -440,7 +459,10 @@ int userland_selftest(void)
 
     CHECK_EQ(process_count(), 0, "no processes left");
     CHECK_EQ(vfs_open_file_count(), 0, "no descriptors leaked by user programs");
-    CHECK_EQ(pmm_free_frame_count(), frames, "no physical frames leaked");
+    net_idle();
+    /* The heap keeps frames once mapped, so a new high-water mark legitimately uses some. */
+    CHECK(frames - pmm_free_frame_count() <= (heap_mapped() - mapped) / PAGE_SIZE,
+          "no physical frames leaked outside the heap");
     CHECK_EQ(heap_used(), heap, "no kernel heap leaked");
 
     printk("  SMEP %s, SMAP %s\n", syscall_smep_enabled() ? "on" : "not available",

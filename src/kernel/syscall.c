@@ -13,6 +13,7 @@
 #include "kernel/string.h"
 #include "mm/pmm.h"
 #include "mm/uspace.h"
+#include "net/net.h"
 
 /* 32-bit arguments (descriptors, pids, flags): a 64-bit value that does not fit is invalid,
  * not silently truncated (1<<32 must not alias descriptor 0). */
@@ -105,6 +106,11 @@ static sysret sys_write(struct process *p, int fd, uint64_t ubuf, uint64_t len)
         if (pf->kind == FD_CONSOLE) {
             console_write(buf, chunk);
             done += chunk;
+        } else if (pf->kind == FD_SOCK) {
+            int64_t w = sock_send(pf->vfs_fd, buf, chunk, 0, 0);
+            if (w < 0)
+                return done ? (sysret)done : w;
+            done += (uint64_t)w;
         } else {
             int64_t w = vfs_write(pf->vfs_fd, buf, chunk);
             if (w < 0)
@@ -131,6 +137,8 @@ static sysret sys_read(struct process *p, int fd, uint64_t ubuf, uint64_t len)
         int64_t r;
         if (pf->kind == FD_CONSOLE)
             r = console_read(buf, chunk);
+        else if (pf->kind == FD_SOCK)
+            r = sock_recv(pf->vfs_fd, buf, chunk, NULL, NULL);
         else
             r = vfs_read(pf->vfs_fd, buf, chunk);
         if (r < 0)
@@ -141,8 +149,8 @@ static sysret sys_read(struct process *p, int fd, uint64_t ubuf, uint64_t len)
         if (rc < 0)
             return done ? (sysret)done : rc;
         done += (uint64_t)r;
-        if (pf->kind == FD_CONSOLE || (size_t)r < chunk)
-            break; /* a terminal read returns one line */
+        if (pf->kind == FD_CONSOLE || pf->kind == FD_SOCK || (size_t)r < chunk)
+            break; /* a terminal or socket read returns what is available */
     }
     return (sysret)done;
 }
@@ -171,6 +179,8 @@ static sysret sys_close(struct process *p, int fd)
         return -EBADF;
     if (pf->kind == FD_VFS)
         vfs_close(pf->vfs_fd);
+    else if (pf->kind == FD_SOCK)
+        sock_close(pf->vfs_fd);
     pf->kind = FD_FREE;
     return 0;
 }
@@ -330,6 +340,154 @@ static sysret sys_getrandom(struct process *p, uint64_t ubuf, uint64_t len)
     return rc < 0 ? rc : (sysret)len;
 }
 
+/* ---------- sockets ---------- */
+
+static int sock_of(struct process *p, int fd)
+{
+    struct pfile *pf = process_fd(p, fd);
+    if (!pf)
+        return -EBADF;
+    return pf->kind == FD_SOCK ? pf->vfs_fd : -ENOTSOCK;
+}
+
+static int install_socket(struct process *p, int s)
+{
+    int fd = process_fd_install(p, FD_SOCK, s);
+    if (fd < 0)
+        sock_close(s);
+    return fd;
+}
+
+static sysret sys_socket(struct process *p, int type)
+{
+    int s = sock_create(type);
+    return s < 0 ? s : install_socket(p, s);
+}
+
+static sysret get_addr(struct process *p, uint64_t uaddr, struct abi_sockaddr *out)
+{
+    return uspace_copy_in(p->pml4, out, uaddr, sizeof(*out));
+}
+
+static sysret sys_bind(struct process *p, int fd, uint64_t uaddr)
+{
+    int s = sock_of(p, fd);
+    struct abi_sockaddr a;
+    if (s < 0)
+        return s;
+    int rc = (int)get_addr(p, uaddr, &a);
+    return rc < 0 ? rc : sock_bind(s, a.ip, a.port);
+}
+
+static sysret sys_connect(struct process *p, int fd, uint64_t uaddr)
+{
+    int s = sock_of(p, fd);
+    struct abi_sockaddr a;
+    if (s < 0)
+        return s;
+    int rc = (int)get_addr(p, uaddr, &a);
+    return rc < 0 ? rc : sock_connect(s, a.ip, a.port);
+}
+
+static sysret sys_accept(struct process *p, int fd, uint64_t uaddr)
+{
+    int s = sock_of(p, fd);
+    if (s < 0)
+        return s;
+    if (uaddr && !uspace_writable(p->pml4, uaddr, sizeof(struct abi_sockaddr)))
+        return -EFAULT;
+    struct abi_sockaddr a = {0};
+    int ns = sock_accept(s, &a.ip, &a.port);
+    if (ns < 0)
+        return ns;
+    int nfd = install_socket(p, ns);
+    if (nfd >= 0 && uaddr)
+        uspace_copy_out(p->pml4, uaddr, &a, sizeof(a));
+    return nfd;
+}
+
+#define NET_CHUNK 2048
+
+static sysret sys_sendto(struct process *p, int fd, uint64_t udg)
+{
+    int s = sock_of(p, fd);
+    struct abi_dgram dg;
+    if (s < 0)
+        return s;
+    int rc = uspace_copy_in(p->pml4, &dg, udg, sizeof(dg));
+    if (rc < 0)
+        return rc;
+    uint8_t buf[NET_CHUNK];
+    uint64_t done = 0;
+    uint64_t ubuf = (uint64_t)dg.buf;
+    bool first = true;
+    while (first || done < dg.len) {
+        size_t chunk = dg.len - done < NET_CHUNK ? (size_t)(dg.len - done) : NET_CHUNK;
+        rc = uspace_copy_in(p->pml4, buf, ubuf + done, chunk);
+        if (rc < 0)
+            return done ? (sysret)done : rc;
+        int64_t w = sock_send(s, buf, chunk, dg.addr.ip, dg.addr.port);
+        if (w < 0)
+            return done ? (sysret)done : w;
+        done += (uint64_t)w;
+        first = false;
+        if ((size_t)w < chunk)
+            break;
+    }
+    return (sysret)done;
+}
+
+static sysret sys_recvfrom(struct process *p, int fd, uint64_t udg)
+{
+    int s = sock_of(p, fd);
+    struct abi_dgram dg;
+    if (s < 0)
+        return s;
+    int rc = uspace_copy_in(p->pml4, &dg, udg, sizeof(dg));
+    if (rc < 0)
+        return rc;
+    size_t want = dg.len < NET_CHUNK ? (size_t)dg.len : NET_CHUNK;
+    if (!uspace_writable(p->pml4, (uint64_t)dg.buf, want) ||
+        !uspace_writable(p->pml4, udg, sizeof(dg))) /* before blocking */
+        return -EFAULT;
+    uint8_t buf[NET_CHUNK];
+    struct abi_sockaddr from = {0};
+    int64_t n = sock_recv(s, buf, want, &from.ip, &from.port);
+    if (n < 0)
+        return n;
+    rc = uspace_copy_out(p->pml4, (uint64_t)dg.buf, buf, (size_t)n);
+    if (rc < 0)
+        return rc;
+    dg.addr = from;
+    uspace_copy_out(p->pml4, udg, &dg, sizeof(dg));
+    return n;
+}
+
+static sysret sys_sockctl(struct process *p, int fd, uint64_t op, uint64_t value)
+{
+    int s = sock_of(p, fd);
+    if (s < 0)
+        return s;
+    int64_t out = 0;
+    int rc = sock_ctl(s, ARG_INT(op), (int64_t)value, &out);
+    return rc < 0 ? rc : out;
+}
+
+static sysret sys_netinfo(struct process *p, uint64_t ubuf)
+{
+    struct abi_netinfo ni;
+    net_get_info(&ni);
+    int rc = uspace_copy_out(p->pml4, ubuf, &ni, sizeof(ni));
+    return rc < 0 ? rc : 0;
+}
+
+static sysret sys_ping(uint64_t ip, uint64_t timeout_ms, uint64_t seq)
+{
+    if (ip > 0xffffffffULL || timeout_ms > 60000)
+        return -EINVAL;
+    return net_ping((uint32_t)ip, (uint32_t)timeout_ms, (uint16_t)seq);
+}
+
 static sysret sys_meminfo(struct process *p, uint64_t ubuf)
 {
     struct abi_meminfo mi = {
@@ -431,6 +589,28 @@ static sysret do_syscall(struct process *p, uint64_t nr, uint64_t a0, uint64_t a
         return sys_meminfo(p, a0);
     case SYS_POWEROFF:
         machine_poweroff();
+    case SYS_SOCKET:
+        return sys_socket(p, ARG_INT(a0));
+    case SYS_BIND:
+        return sys_bind(p, ARG_INT(a0), a1);
+    case SYS_LISTEN: {
+        int sd = sock_of(p, ARG_INT(a0));
+        return sd < 0 ? sd : sock_listen(sd, ARG_INT(a1));
+    }
+    case SYS_ACCEPT:
+        return sys_accept(p, ARG_INT(a0), a1);
+    case SYS_CONNECT:
+        return sys_connect(p, ARG_INT(a0), a1);
+    case SYS_SENDTO:
+        return sys_sendto(p, ARG_INT(a0), a1);
+    case SYS_RECVFROM:
+        return sys_recvfrom(p, ARG_INT(a0), a1);
+    case SYS_SOCKCTL:
+        return sys_sockctl(p, ARG_INT(a0), a1, a2);
+    case SYS_NETINFO:
+        return sys_netinfo(p, a0);
+    case SYS_PING:
+        return sys_ping(a0, a1, a2);
     case SYS_GETRANDOM:
         return sys_getrandom(p, a0, a1);
     case SYS_FTRUNCATE: {

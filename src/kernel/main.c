@@ -29,6 +29,7 @@
 #include "mm/pmm.h"
 #include "mm/selftest.h"
 #include "mm/vmm.h"
+#include "net/net.h"
 
 static struct boot_info boot_info;
 
@@ -118,6 +119,7 @@ __attribute__((no_stack_protector)) void kmain(uint64_t mbi_phys)
     syscall_init();
     process_init();
 
+    net_init();
     pci_init();
     printk("PCI: %d device(s)\n", pci_device_count());
     drivers_register_builtin();
@@ -141,6 +143,11 @@ __attribute__((no_stack_protector)) void kmain(uint64_t mbi_phys)
     fs_boot_init(&boot_info);
     int n6 = fs_selftest();
     printk("FS SELFTEST: PASS (%d checks)\n", n6);
+
+    /* Phase 7: networking. */
+    int n8 = net_selftest();
+    printk("NET SELFTEST: PASS (%d checks)\n", n8);
+    net_dump();
 
     /* Phase 6: user mode. */
     int n7 = userland_selftest();

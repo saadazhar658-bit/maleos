@@ -89,8 +89,49 @@ struct stat {
 #define SYS_POWEROFF 26  /* () does not return */
 #define SYS_FTRUNCATE 27 /* (fd, size) */
 #define SYS_GETRANDOM 28 /* (buf, len) -> len; len <= ABI_RANDOM_MAX */
-#define SYS_COUNT 29
+#define SYS_SOCKET 29    /* (type) -> fd; SOCK_STREAM or SOCK_DGRAM */
+#define SYS_BIND 30      /* (fd, const struct abi_sockaddr *) */
+#define SYS_LISTEN 31    /* (fd, backlog) */
+#define SYS_ACCEPT 32    /* (fd, struct abi_sockaddr * or NULL) -> new fd */
+#define SYS_CONNECT 33   /* (fd, const struct abi_sockaddr *) */
+#define SYS_SENDTO 34    /* (fd, const struct abi_dgram *) -> bytes sent */
+#define SYS_RECVFROM 35  /* (fd, struct abi_dgram *) -> bytes received, 0 = end of stream */
+#define SYS_SOCKCTL 36   /* (fd, op, value) see SOCKCTL_* */
+#define SYS_NETINFO 37   /* (struct abi_netinfo *) */
+#define SYS_PING 38      /* (ip, timeout_ms, seq) -> round-trip time in ms */
+#define SYS_COUNT 39
 #define ABI_RANDOM_MAX 256
+
+#define SOCK_STREAM 1
+#define SOCK_DGRAM 2
+
+#define SOCKCTL_RCVTIMEO 1  /* value = milliseconds, 0 = wait forever */
+#define SOCKCTL_NONBLOCK 2  /* value = 0 or 1 */
+#define SOCKCTL_SHUT_WR 3   /* send FIN after the queued data */
+#define SOCKCTL_GETNAME 4   /* returns local port; value ignored */
+#define SOCKCTL_REUSEADDR 5 /* value = 0 or 1 */
+
+/* IPv4 address in host byte order (10.0.2.15 == 0x0A00020F). */
+struct abi_sockaddr {
+    uint32_t ip;
+    uint16_t port;
+    uint16_t reserved;
+};
+
+struct abi_dgram {
+    void *buf;
+    uint64_t len;
+    struct abi_sockaddr addr; /* destination for sendto on UDP, source after recvfrom */
+};
+
+struct abi_netinfo {
+    uint8_t mac[6];
+    uint8_t present; /* 1 if a network card was found */
+    uint8_t up;
+    uint32_t ip, mask, gw;
+    uint64_t rx_frames, tx_frames, rx_bytes, tx_bytes, rx_dropped;
+    uint64_t tcp_conns, tcp_retrans, udp_dropped, bad_checksums;
+};
 
 #define ABI_MAX_ARGS 16 /* argv entries accepted by SYS_SPAWN (including argv[0]) */
 #define ABI_ARG_MAX 256 /* bytes per argument including the NUL */

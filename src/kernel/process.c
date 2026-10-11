@@ -13,6 +13,7 @@
 #include "mm/mm.h"
 #include "mm/uspace.h"
 #include "mm/vmm.h"
+#include "net/net.h"
 
 /*
  * Processes: a user address space, a descriptor table and one kernel thread that runs the
@@ -210,6 +211,8 @@ static void close_all_fds(struct process *p)
     for (int i = 0; i < PROC_FDS; i++) {
         if (p->fds[i].kind == FD_VFS)
             vfs_close(p->fds[i].vfs_fd);
+        else if (p->fds[i].kind == FD_SOCK)
+            sock_close(p->fds[i].vfs_fd);
         p->fds[i].kind = FD_FREE;
     }
 }

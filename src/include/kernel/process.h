@@ -23,11 +23,11 @@
 #define PROC_HEAP_PAGES 2048                 /* sbrk limit: 8 MiB */
 #define ELF_MAX_SIZE (4u << 20)
 
-enum fd_kind { FD_FREE = 0, FD_CONSOLE, FD_VFS };
+enum fd_kind { FD_FREE = 0, FD_CONSOLE, FD_VFS, FD_SOCK };
 
 struct pfile {
     enum fd_kind kind;
-    int vfs_fd; /* descriptor in the global VFS table when kind == FD_VFS */
+    int vfs_fd; /* index in the global VFS file table (FD_VFS) or socket table (FD_SOCK) */
 };
 
 struct process {
