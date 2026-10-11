@@ -5,14 +5,18 @@
 # Environment:
 #   MEM      guest RAM size            (default 256M)
 #   CPU      QEMU -cpu model           (default: QEMU64; "max" turns on SMEP/SMAP)
-#   TIMEOUT  seconds before giving up  (default 30)
+#   TIMEOUT  seconds before giving up  (default 60)
+#   NET      set to 0 to boot without a network card
 #   MARKERS  '|'-separated list of strings that must appear
 set -euo pipefail
 
 ISO="${1:-build/maleos.iso}"
 MEM="${MEM:-256M}"
-TIMEOUT="${TIMEOUT:-30}"
-MARKERS="${MARKERS:-MALEOS BOOT OK|MM SELFTEST: PASS|SCHED SELFTEST: PASS|DRIVER SELFTEST: PASS|STORAGE SELFTEST: PASS|FS SELFTEST: PASS|USER SELFTEST: PASS|ATA: hda|AHCI: sda}"
+TIMEOUT="${TIMEOUT:-60}"
+[ "${NET:-1}" = 0 ] && DEFAULT_E1000="" || DEFAULT_E1000="|e1000: "
+MARKERS="${MARKERS:-MALEOS BOOT OK|MM SELFTEST: PASS|SCHED SELFTEST: PASS|DRIVER SELFTEST: PASS|STORAGE SELFTEST: PASS|FS SELFTEST: PASS|NET SELFTEST: PASS|USER SELFTEST: PASS|ATA: hda|AHCI: sda${DEFAULT_E1000}}"
+NET_ARGS="-netdev user,id=n0 -device e1000,netdev=n0"
+[ "${NET:-1}" = 0 ] && NET_ARGS="-nic none"
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT
 
@@ -33,6 +37,7 @@ timeout "$TIMEOUT" qemu-system-x86_64 \
     -drive "file=$DISKS/ide.img,format=raw,if=ide,index=0" \
     -drive "file=$DISKS/sata.img,format=raw,if=none,id=sata0" \
     -device ich9-ahci,id=ahci -device ide-hd,drive=sata0,bus=ahci.0 \
+    ${NET_ARGS} \
     -serial "file:$LOG" \
     -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
     -no-reboot

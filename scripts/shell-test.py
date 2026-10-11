@@ -20,7 +20,7 @@ PROMPT = "$ "
 # (command, substrings that must appear in its output, substrings that must not)
 STEPS = [
     ("echo hello world", ["hello world"], []),
-    ("uname", ["Maleos 0.6 x86_64"], []),
+    ("uname", ["Maleos 0.7 x86_64"], []),
     ("pwd", ["\n/\r"], []),
     ("ls /", ["bin/", "etc/", "share/", "tmp/", "mnt/", "tests/"], []),
     ("cat /etc/hostname", ["maleos"], []),

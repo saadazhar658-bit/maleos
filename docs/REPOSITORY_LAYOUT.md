@@ -11,6 +11,7 @@ maleos/
 │   ├── MEMORY.md                 Memory management design (Phase 2)
 │   ├── SCHEDULER.md              Interrupts, scheduler, locking, IPC (Phase 3)
 │   ├── DRIVERS.md                ACPI/PCI, driver shim, keyboard, storage (Phase 4)
+│   ├── NETWORK.md                Network stack (Phase 7b)
 │   ├── FILESYSTEM.md             VFS, ramfs, initrd, ext2 (Phase 5)
 │   ├── HARDENING.md              Stack protector, ASLR, fuzzing (Phase 7a)
 │   ├── USERLAND.md               Syscalls, address spaces, ELF loader, shell (Phase 6)
