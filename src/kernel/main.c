@@ -23,6 +23,8 @@
 #include "kernel/random.h"
 #include "kernel/sched.h"
 #include "kernel/sched_selftest.h"
+#include "kernel/smp.h"
+#include "kernel/smp_selftest.h"
 #include "kernel/userland_selftest.h"
 #include "mm/heap.h"
 #include "mm/mm.h"
@@ -143,6 +145,12 @@ __attribute__((no_stack_protector)) void kmain(uint64_t mbi_phys)
     fs_boot_init(&boot_info);
     int n6 = fs_selftest();
     printk("FS SELFTEST: PASS (%d checks)\n", n6);
+
+    /* Phase 7: more CPUs. Everything above ran on the boot CPU alone. */
+    int ncpu = smp_init();
+    printk("SMP: %d CPU(s) started\n", ncpu);
+    int n9 = smp_selftest(ncpu);
+    printk("SMP SELFTEST: PASS (%d checks, %d CPU(s))\n", n9, sched_cpu_limit());
 
     /* Phase 7: networking. */
     int n8 = net_selftest();

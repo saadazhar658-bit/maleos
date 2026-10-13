@@ -12,5 +12,6 @@ struct interrupt_frame {
 };
 
 void idt_init(void);
+void idt_load(void); /* load the shared IDT on this CPU */
 
 #endif

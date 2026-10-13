@@ -50,6 +50,7 @@ struct thread {
     struct list_node all_node;   /* every live thread */
 
     struct waitq *wq; /* wait queue currently blocked on, if any */
+    bool is_idle;     /* a per-CPU idle thread: never on a run queue */
     bool sleeping;    /* on the sleep list */
     bool timed_out;   /* last wait ended by timeout */
     uint64_t wake_tick;
@@ -64,8 +65,7 @@ struct thread {
     uint64_t cpu_ticks;
 };
 
-extern volatile int irq_depth;     /* >0 while handling an interrupt */
-extern volatile bool need_resched; /* a higher-priority thread became ready / slice expired */
+struct cpu;
 
 /* ---- lifecycle ---- */
 void sched_init(void);  /* adopt the boot context as a thread and create the idle thread */
@@ -77,6 +77,12 @@ __attribute__((noreturn)) void thread_exit(int code);
 int thread_join(struct thread *t); /* waits, frees the thread, returns its exit code */
 void thread_detach(struct thread *t);
 int thread_set_priority(struct thread *t, int prio);
+
+/* ---- more than one CPU ---- */
+void sched_prepare_ap(struct cpu *c, uint64_t stack_top);
+__attribute__((noreturn)) void sched_ap_enter(struct cpu *c);
+void sched_set_cpu_limit(int n); /* how many CPUs may run threads (default 1) */
+int sched_cpu_limit(void);
 
 /* ---- time ---- */
 void sched_yield(void);

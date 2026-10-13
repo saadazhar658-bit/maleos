@@ -1,6 +1,7 @@
 #include "mm/vmm.h"
 
 #include "arch/cpu.h"
+#include "arch/percpu.h"
 #include "kernel/printk.h"
 #include "kernel/spinlock.h"
 #include "kernel/string.h"
@@ -199,6 +200,8 @@ int vmm_unmap(uint64_t pml4, uint64_t virt)
 {
     uint64_t flags = spin_lock_irqsave(&vmm_lock);
     int r = unmap_locked(pml4, virt);
+    if (virt >= 0xFFFF800000000000ULL)
+        smp_tlb_bump(); /* other CPUs may cache this kernel mapping */
     spin_unlock_irqrestore(&vmm_lock, flags);
     return r;
 }
@@ -207,6 +210,8 @@ int vmm_protect(uint64_t pml4, uint64_t virt, uint32_t prot)
 {
     uint64_t flags = spin_lock_irqsave(&vmm_lock);
     int r = protect_locked(pml4, virt, prot);
+    if (virt >= 0xFFFF800000000000ULL)
+        smp_tlb_bump();
     spin_unlock_irqrestore(&vmm_lock, flags);
     return r;
 }

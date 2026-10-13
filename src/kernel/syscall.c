@@ -1,4 +1,5 @@
 #include "arch/syscall.h"
+#include "arch/percpu.h"
 
 #include "arch/cpu.h"
 #include "arch/idt.h"
@@ -481,6 +482,21 @@ static sysret sys_netinfo(struct process *p, uint64_t ubuf)
     return rc < 0 ? rc : 0;
 }
 
+static sysret sys_cpuinfo(struct process *p, uint64_t ubuf)
+{
+    struct abi_cpuinfo ci;
+    memset(&ci, 0, sizeof(ci));
+    ci.ncpus = (uint32_t)sched_cpu_limit();
+    ci.cpu = this_cpu()->id;
+    for (int i = 0; i < ABI_CPU_MAX && i < SMP_MAX; i++) {
+        ci.ticks[i] = cpus[i].ticks;
+        ci.idle_ticks[i] = cpus[i].idle_ticks;
+        ci.user_ticks[i] = cpus[i].user_ticks;
+    }
+    int rc = uspace_copy_out(p->pml4, ubuf, &ci, sizeof(ci));
+    return rc < 0 ? rc : 0;
+}
+
 static sysret sys_ping(uint64_t ip, uint64_t timeout_ms, uint64_t seq)
 {
     if (ip > 0xffffffffULL || timeout_ms > 60000)
@@ -611,6 +627,8 @@ static sysret do_syscall(struct process *p, uint64_t nr, uint64_t a0, uint64_t a
         return sys_netinfo(p, a0);
     case SYS_PING:
         return sys_ping(a0, a1, a2);
+    case SYS_CPUINFO:
+        return sys_cpuinfo(p, a0);
     case SYS_GETRANDOM:
         return sys_getrandom(p, a0, a1);
     case SYS_FTRUNCATE: {

@@ -99,7 +99,8 @@ struct stat {
 #define SYS_SOCKCTL 36   /* (fd, op, value) see SOCKCTL_* */
 #define SYS_NETINFO 37   /* (struct abi_netinfo *) */
 #define SYS_PING 38      /* (ip, timeout_ms, seq) -> round-trip time in ms */
-#define SYS_COUNT 39
+#define SYS_CPUINFO 39   /* (struct abi_cpuinfo *) */
+#define SYS_COUNT 40
 #define ABI_RANDOM_MAX 256
 
 #define SOCK_STREAM 1
@@ -131,6 +132,15 @@ struct abi_netinfo {
     uint32_t ip, mask, gw;
     uint64_t rx_frames, tx_frames, rx_bytes, tx_bytes, rx_dropped;
     uint64_t tcp_conns, tcp_retrans, udp_dropped, bad_checksums;
+};
+
+#define ABI_CPU_MAX 8
+struct abi_cpuinfo {
+    uint32_t ncpus;                   /* CPUs running the scheduler */
+    uint32_t cpu;                     /* the CPU this call ran on */
+    uint64_t ticks[ABI_CPU_MAX];      /* timer ticks seen by each CPU */
+    uint64_t idle_ticks[ABI_CPU_MAX]; /* ... while idle */
+    uint64_t user_ticks[ABI_CPU_MAX]; /* ... while running user code */
 };
 
 #define ABI_MAX_ARGS 16 /* argv entries accepted by SYS_SPAWN (including argv[0]) */

@@ -2,6 +2,7 @@
 
 #include "arch/cpu.h"
 #include "arch/gdt.h"
+#include "arch/percpu.h"
 #include "arch/syscall.h"
 #include "fs/vfs.h"
 #include "kernel/errno.h"
@@ -47,8 +48,7 @@ void sched_switch_hook(struct thread *next)
     if (read_cr3() != want)
         write_cr3(want);
     if (next->kstack_top) {
-        gdt_set_rsp0(next->kstack_top);
-        syscall_kstack_top = next->kstack_top;
+        gdt_set_rsp0(next->kstack_top); /* this CPU's TSS and SYSCALL entry stack */
     }
 }
 
@@ -303,6 +303,7 @@ __attribute__((noreturn)) static void enter_user(uint64_t rip, uint64_t rsp)
                      "xorl %%r13d, %%r13d\n\t"
                      "xorl %%r14d, %%r14d\n\t"
                      "xorl %%r15d, %%r15d\n\t"
+                     "swapgs\n\t" /* user GS base back in place, per-CPU pointer parked */
                      "iretq"
                      :
                      : "i"(USER_DS), "r"(rsp), "i"(USER_CS), "r"(rip)
@@ -318,6 +319,10 @@ static void process_thread_entry(void *arg)
     t->proc = p;
     sched_switch_hook(t); /* address space and kernel stack, before the first syscall or IRQ */
     irq_restore(f);
+    /* Leaving the kernel for good: drop the big kernel lock with interrupts off, so nothing
+     * can run kernel code lock-free between here and the iretq. */
+    irq_disable();
+    bkl_unlock();
     enter_user(p->entry, p->user_sp);
 }
 

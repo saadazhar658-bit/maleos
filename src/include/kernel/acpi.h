@@ -8,6 +8,7 @@
 
 #define ACPI_MAX_IOAPICS 8
 #define ACPI_MAX_ISOS 16
+#define ACPI_MAX_CPUS 16
 
 struct acpi_ioapic {
     uint8_t id;
@@ -29,6 +30,8 @@ struct acpi_info {
     int ioapic_count;
     struct acpi_iso isos[ACPI_MAX_ISOS];
     int iso_count;
+    uint8_t cpu_apic_ids[ACPI_MAX_CPUS]; /* enabled processors, MADT order */
+    int cpu_count;
 };
 
 /* Parse RSDP -> RSDT/XSDT -> MADT. Never fails hard: without ACPI, present stays false. */

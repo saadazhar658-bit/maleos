@@ -101,6 +101,7 @@ static void test_basic_programs(void)
     CHECK_EQ(run0("/tests/t_spawn"), 0, "spawn, wait and redirection");
     CHECK_EQ(run0("/tests/t_sys"), 0, "invalid system call arguments are rejected");
     CHECK_EQ(run0("/tests/t_net"), 0, "sockets from user space");
+    CHECK_EQ(run0("/tests/t_smp"), 0, "user programs run on several CPUs at once");
     CHECK_EQ(sock_count(), 0, "sockets are closed when a program ends");
     CHECK_EQ(run1("/tests/t_iso", "1"), 0, "isolation test, single instance");
     CHECK_EQ(process_count(), 0, "no process left behind");

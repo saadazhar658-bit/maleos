@@ -14,7 +14,9 @@
 #define USER_CS (0x28 | 3)
 #define TSS_SEL 0x30
 
-void gdt_init(void);
+struct cpu;
+void gdt_init(void);                             /* boot CPU */
+void gdt_init_cpu(struct cpu *c, uint64_t rsp0); /* any CPU: GDT, TSS, GS base */
 
 /* Kernel stack the CPU switches to when an interrupt or exception arrives from ring 3. */
 void gdt_set_rsp0(uint64_t rsp0);
