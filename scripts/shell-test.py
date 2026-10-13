@@ -54,6 +54,7 @@ STEPS = [
     ("hello a b c", ["Hello from user space!", "a b c"], []),
     ("ps", ["init", "sh", "ps"], []),
     ("free", ["total", "free"], []),
+    ("cpus", ["CPU(s) running threads", "cpu  ticks"], []),
     ("uptime", ["up "], []),
     ("echo 'quoted  words'", ["quoted  words"], []),
     ("cd /nonexistent", ["no such file or directory"], []),
@@ -68,6 +69,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("iso", nargs="?", default="build/maleos.iso")
     ap.add_argument("--mem", default=os.environ.get("MEM", "256M"))
+    ap.add_argument("--smp", default=os.environ.get("SMP", "2"), help="virtual CPUs")
     ap.add_argument("--cpu", default=None, help="QEMU -cpu model (e.g. max to exercise SMEP/SMAP)")
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--keep-disks", action="store_true")
@@ -78,7 +80,7 @@ def main():
     if not args.keep_disks:
         subprocess.run([os.path.join(here, "mkdisks.sh"), disks], check=True, stdout=subprocess.DEVNULL)
 
-    cmd = ["qemu-system-x86_64", "-cdrom", args.iso, "-m", args.mem, "-display", "none",
+    cmd = ["qemu-system-x86_64", "-cdrom", args.iso, "-m", args.mem, "-smp", args.smp, "-display", "none",
            "-serial", "stdio", "-monitor", "none", "-no-reboot",
            "-drive", f"file={disks}/ide.img,format=raw,if=ide,index=0",
            "-drive", f"file={disks}/sata.img,format=raw,if=none,id=sata0",

@@ -11,6 +11,7 @@ maleos/
 │   ├── MEMORY.md                 Memory management design (Phase 2)
 │   ├── SCHEDULER.md              Interrupts, scheduler, locking, IPC (Phase 3)
 │   ├── DRIVERS.md                ACPI/PCI, driver shim, keyboard, storage (Phase 4)
+│   ├── SMP.md                    Multi-core support (Phase 7c)
 │   ├── NETWORK.md                Network stack (Phase 7b)
 │   ├── FILESYSTEM.md             VFS, ramfs, initrd, ext2 (Phase 5)
 │   ├── HARDENING.md              Stack protector, ASLR, fuzzing (Phase 7a)
@@ -33,7 +34,7 @@ maleos/
 │   ├── test/                     Test programs (installed in /tests)
 │   └── user.ld                   User linker script
 ├── src/
-│   ├── arch/x86_64/              boot.asm, GDT/IDT/ISR stubs, APIC, context switch, serial, VGA
+│   ├── arch/x86_64/              boot.asm, GDT/IDT/ISR stubs, APIC, SMP start-up, context switch, serial, VGA
 │   ├── drivers/                  PCI, driver shim, keyboard, block layer, ATA, AHCI
 │   ├── fs/                       VFS core, ramfs, tar, ext2, filesystem self-test
 │   ├── include/{arch,kernel,mm,drivers,fs}/ Public headers

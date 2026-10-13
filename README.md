@@ -91,7 +91,7 @@ flowchart LR
 
 > **Legend:** ⬜ planned · 🟨 in progress · ✅ done
 >
-> **Current status:** Phases 0–6 complete; Phase 7a (hardening) and 7b (network stack) done. Next up: SMP (7c).
+> **Current status:** Phases 0–6 complete; Phase 7a (hardening), 7b (network stack) and 7c (SMP) done. Next up: documentation site and the v0.1.0 release; kernel KASLR is still open.
 
 ### Phase 0 — Foundations & Tooling
 - ✅ Reproducible `x86_64-elf` cross-compiler setup (`scripts/build-toolchain.sh`)
@@ -150,7 +150,7 @@ flowchart LR
 ### Phase 7 — Hardening & Expansion *(new)*
 - ✅ Syscall fuzzer (8 seeds × 2500 calls on every boot) and hardening tests
 - ✅ Network stack (e1000, ARP, IPv4, ICMP, UDP, TCP, sockets; see docs/NETWORK.md)
-- ⬜ SMP (multi-core) support
+- ✅ SMP: all CPUs run user code in parallel, kernel under one big lock (see docs/SMP.md)
 - ✅ Stack protector (kernel and user), random source, user-space ASLR (stack, heap)
 - ⬜ Kernel image KASLR (needs a relocatable kernel)
 - ⬜ Documentation site and a tagged `v0.1.0` release
@@ -259,7 +259,7 @@ Install the build tools and emulation suite (Ubuntu / Debian):
 | **Build system** | `Makefile` (auto-detects `x86_64-elf-gcc`, falls back to host GCC) |
 | **Boot protocol** | Multiboot2 via GRUB |
 | **Memory limit** | Up to 8 GiB of RAM is managed (`PMM_MAX_PHYS`) |
-| **CPUs** | One (SMP comes in Phase 7) |
+| **CPUs** | Up to 8; user code parallel, kernel serialised by a big lock |
 | **Emulator** | QEMU |
 
 ---

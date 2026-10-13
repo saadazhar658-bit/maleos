@@ -39,6 +39,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("iso", nargs="?", default="build/maleos.iso")
     ap.add_argument("--mem", default="256M")
+    ap.add_argument("--smp", default=os.environ.get("SMP", "2"), help="virtual CPUs")
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -46,7 +47,7 @@ def main():
     http_port, echo_port, udp_port, nc_port = free_port(), free_port(), free_port(socket.SOCK_DGRAM), free_port()
     fwd = (f"hostfwd=tcp:127.0.0.1:{http_port}-:80,hostfwd=tcp:127.0.0.1:{echo_port}-:7,"
            f"hostfwd=udp:127.0.0.1:{udp_port}-:7,hostfwd=tcp:127.0.0.1:{nc_port}-:9000")
-    cmd = ["qemu-system-x86_64", "-cdrom", args.iso, "-m", args.mem, "-display", "none",
+    cmd = ["qemu-system-x86_64", "-cdrom", args.iso, "-m", args.mem, "-smp", args.smp, "-display", "none",
            "-serial", "stdio", "-monitor", "none", "-no-reboot",
            "-netdev", f"user,id=n0,{fwd}", "-device", "e1000,netdev=n0"]
     qemu = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)

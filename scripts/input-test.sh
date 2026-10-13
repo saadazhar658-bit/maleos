@@ -5,7 +5,7 @@
 set -euo pipefail
 
 ISO="${1:-build/maleos.iso}"
-TIMEOUT="${TIMEOUT:-60}"
+TIMEOUT="${TIMEOUT:-150}"
 WORK="$(mktemp -d)"
 LOG="$WORK/serial.log"
 SOCK="$WORK/mon.sock"
@@ -13,7 +13,7 @@ trap 'kill "$QPID" 2>/dev/null || true; rm -rf "$WORK"' EXIT
 
 [ -f "$ISO" ] || { echo "error: ISO not found: $ISO (run 'make iso')" >&2; exit 2; }
 
-qemu-system-x86_64 -cdrom "$ISO" -m 256M -display none -no-reboot \
+qemu-system-x86_64 -cdrom "$ISO" -m 256M -smp "${SMP:-2}" -display none -no-reboot \
     -serial "file:$LOG" -monitor "unix:$SOCK,server,nowait" &
 QPID=$!
 

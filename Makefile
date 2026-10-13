@@ -76,7 +76,7 @@ DISK_FLAGS := $(if $(wildcard build/disks/ide.img),-drive file=build/disks/ide.i
               -drive file=build/disks/sata.img,format=raw,if=none,id=sata0 \
               -device ich9-ahci,id=ahci -device ide-hd,drive=sata0,bus=ahci.0)
 
-QEMU_FLAGS := -cdrom $(ISO) -m 256M -serial stdio -no-reboot $(DISK_FLAGS)
+QEMU_FLAGS := -cdrom $(ISO) -m 256M -smp 2 -serial stdio -no-reboot $(DISK_FLAGS)
 
 .PHONY: all iso run debug test input-test shell-test disks format clean help user
 all: $(KERNEL)

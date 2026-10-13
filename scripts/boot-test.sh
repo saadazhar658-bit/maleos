@@ -5,16 +5,18 @@
 # Environment:
 #   MEM      guest RAM size            (default 256M)
 #   CPU      QEMU -cpu model           (default: QEMU64; "max" turns on SMEP/SMAP)
-#   TIMEOUT  seconds before giving up  (default 60)
+#   TIMEOUT  seconds before giving up  (default 150)
+#   SMP      number of virtual CPUs    (default 4)
 #   NET      set to 0 to boot without a network card
 #   MARKERS  '|'-separated list of strings that must appear
 set -euo pipefail
 
 ISO="${1:-build/maleos.iso}"
 MEM="${MEM:-256M}"
-TIMEOUT="${TIMEOUT:-60}"
+TIMEOUT="${TIMEOUT:-150}"
+SMP="${SMP:-4}"
 [ "${NET:-1}" = 0 ] && DEFAULT_E1000="" || DEFAULT_E1000="|e1000: "
-MARKERS="${MARKERS:-MALEOS BOOT OK|MM SELFTEST: PASS|SCHED SELFTEST: PASS|DRIVER SELFTEST: PASS|STORAGE SELFTEST: PASS|FS SELFTEST: PASS|NET SELFTEST: PASS|USER SELFTEST: PASS|ATA: hda|AHCI: sda${DEFAULT_E1000}}"
+MARKERS="${MARKERS:-MALEOS BOOT OK|MM SELFTEST: PASS|SCHED SELFTEST: PASS|DRIVER SELFTEST: PASS|STORAGE SELFTEST: PASS|FS SELFTEST: PASS|NET SELFTEST: PASS|SMP SELFTEST: PASS|USER SELFTEST: PASS|ATA: hda|AHCI: sda${DEFAULT_E1000}}"
 NET_ARGS="-netdev user,id=n0 -device e1000,netdev=n0"
 [ "${NET:-1}" = 0 ] && NET_ARGS="-nic none"
 LOG="$(mktemp)"
@@ -32,6 +34,7 @@ set +e
 timeout "$TIMEOUT" qemu-system-x86_64 \
     -cdrom "$ISO" \
     -m "$MEM" \
+    -smp "$SMP" \
     ${CPU:+-cpu "$CPU"} \
     -display none \
     -drive "file=$DISKS/ide.img,format=raw,if=ide,index=0" \
@@ -44,7 +47,7 @@ timeout "$TIMEOUT" qemu-system-x86_64 \
 STATUS=$?
 set -e
 
-echo "--- serial output (RAM: $MEM) ---"
+echo "--- serial output (RAM: $MEM, CPUs: $SMP) ---"
 cat "$LOG"
 echo "---------------------------------"
 
