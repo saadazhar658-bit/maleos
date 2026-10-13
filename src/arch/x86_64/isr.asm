@@ -5,6 +5,7 @@
 
 bits 64
 extern interrupt_dispatch
+extern interrupt_exit
 
 %macro ISR_NOERR 1
 isr_%1:
@@ -32,6 +33,11 @@ section .text progbits alloc exec nowrite align=16
 %endrep
 
 isr_common:
+    ; Coming from ring 3 the GS base is still the user's: swap in the per-CPU pointer.
+    test byte [rsp + 24], 3     ; saved CS (vector, error code, rip, cs)
+    jz .no_swap_in
+    swapgs
+.no_swap_in:
     push rax
     push rbx
     push rcx
@@ -51,6 +57,8 @@ isr_common:
     cld
     mov rdi, rsp                ; struct interrupt_frame *
     call interrupt_dispatch
+    mov rdi, rsp
+    call interrupt_exit         ; drops the big kernel lock if we return to user mode / idle
 
     pop r15
     pop r14
@@ -68,6 +76,10 @@ isr_common:
     pop rbx
     pop rax
     add rsp, 16                 ; vector + error code
+    test byte [rsp + 8], 3      ; returning to ring 3?
+    jz .no_swap_out
+    swapgs
+.no_swap_out:
     iretq
 
 section .rodata progbits alloc noexec nowrite align=8

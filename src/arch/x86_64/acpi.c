@@ -72,7 +72,11 @@ static void parse_madt(const struct sdt_header *madt)
         if (len < 2 || p + len > end)
             break;
 
-        if (type == 1 && len >= 12 && info.ioapic_count < ACPI_MAX_IOAPICS) { /* I/O APIC */
+        if (type == 0 && len >= 8) {                        /* processor local APIC */
+            bool usable = (*(const uint32_t *)(p + 4)) & 3; /* enabled or online-capable */
+            if (usable && info.cpu_count < ACPI_MAX_CPUS)
+                info.cpu_apic_ids[info.cpu_count++] = p[3];
+        } else if (type == 1 && len >= 12 && info.ioapic_count < ACPI_MAX_IOAPICS) { /* I/O APIC */
             struct acpi_ioapic *io = &info.ioapics[info.ioapic_count++];
             io->id = p[2];
             io->addr = *(const uint32_t *)(p + 4);

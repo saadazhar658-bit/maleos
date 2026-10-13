@@ -11,6 +11,8 @@
 #define REG_TPR 0x080
 #define REG_EOI 0x0B0
 #define REG_SVR 0x0F0
+#define REG_ICR_LOW 0x300
+#define REG_ICR_HIGH 0x310
 #define REG_LVT_TIMER 0x320
 #define REG_LVT_LINT0 0x350
 #define REG_LVT_LINT1 0x360
@@ -147,4 +149,64 @@ void apic_timer_start(uint32_t hz)
     reg_write(REG_TIMER_DIV, TIMER_DIV_16);
     reg_write(REG_LVT_TIMER, VEC_TIMER | LVT_PERIODIC);
     reg_write(REG_TIMER_INIT, initial);
+}
+
+void apic_init_ap(void)
+{
+    uint64_t base = rdmsr(MSR_APIC_BASE);
+    if (!(base & APIC_BASE_ENABLE))
+        wrmsr(MSR_APIC_BASE, base | APIC_BASE_ENABLE);
+
+    reg_write(REG_TPR, 0);
+    reg_write(REG_LVT_TIMER, LVT_MASKED);
+    reg_write(REG_LVT_LINT0, LVT_MASKED);
+    reg_write(REG_LVT_LINT1, LVT_MASKED);
+    reg_write(REG_LVT_ERROR, LVT_MASKED);
+    reg_write(REG_SVR, SVR_ENABLE | VEC_SPURIOUS);
+}
+
+void apic_timer_start_ap(uint32_t hz)
+{
+    uint32_t initial = (uint32_t)(((uint64_t)ticks_per_10ms * 100) / hz);
+    reg_write(REG_TIMER_DIV, TIMER_DIV_16);
+    reg_write(REG_LVT_TIMER, VEC_TIMER | LVT_PERIODIC);
+    reg_write(REG_TIMER_INIT, initial);
+}
+
+void apic_delay_us(uint32_t us)
+{
+    for (uint32_t i = 0; i < us; i++)
+        io_wait();
+}
+
+static void icr_wait(void)
+{
+    unsigned long guard = 0;
+    while (reg_read(REG_ICR_LOW) & (1u << 12)) { /* delivery status: send pending */
+        __builtin_ia32_pause();
+        if (++guard > 100000000UL)
+            return;
+    }
+}
+
+static void icr_send(uint32_t dest, uint32_t low)
+{
+    icr_wait();
+    reg_write(REG_ICR_HIGH, dest << 24);
+    reg_write(REG_ICR_LOW, low);
+}
+
+void apic_send_ipi(uint32_t dest_apic_id, uint8_t vector)
+{
+    icr_send(dest_apic_id, vector | (1u << 14)); /* fixed delivery, assert */
+}
+
+void apic_send_init(uint32_t dest_apic_id)
+{
+    icr_send(dest_apic_id, (5u << 8) | (1u << 14)); /* INIT, assert, edge */
+}
+
+void apic_send_sipi(uint32_t dest_apic_id, uint8_t page)
+{
+    icr_send(dest_apic_id, page | (6u << 8) | (1u << 14)); /* start-up */
 }

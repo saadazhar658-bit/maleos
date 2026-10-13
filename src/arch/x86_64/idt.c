@@ -6,6 +6,7 @@
 #include "arch/cpu.h"
 #include "arch/gdt.h"
 #include "arch/irq.h"
+#include "arch/percpu.h"
 #include "kernel/printk.h"
 #include "kernel/process.h"
 #include "kernel/sched.h"
@@ -83,6 +84,11 @@ void idt_init(void)
     for (int i = 0; i < 256; i++)
         set_gate(i, isr_stub_table[i], i == 8 ? 1 : 0); /* double fault runs on IST1 */
 
+    idt_load();
+}
+
+void idt_load(void)
+{
     struct idt_ptr ptr = {.limit = sizeof(idt) - 1, .base = (uint64_t)idt};
     __asm__ volatile("lidt %0" : : "m"(ptr));
 }
@@ -124,6 +130,11 @@ static void report_exception(struct interrupt_frame *f)
 /* Called from isr_common for every vector. CPU exceptions are fatal; the rest are IRQs. */
 void interrupt_dispatch(struct interrupt_frame *f)
 {
+    /* Arrived from user mode (or from the idle loop's lock-free window): take the big kernel
+     * lock before touching anything shared. Interrupts are off, so nothing can slip in. */
+    if (smp_frame_unlocked(f->cs, f->rip))
+        bkl_lock();
+
     if (f->vector < 32) {
         if ((f->cs & 3) == 3)
             process_user_fault(f); /* a user program misbehaved: kill it, not the kernel */
@@ -134,7 +145,8 @@ void interrupt_dispatch(struct interrupt_frame *f)
     if (f->vector == VEC_SPURIOUS)
         return; /* spurious interrupts must not be acknowledged */
 
-    irq_depth++;
+    struct cpu *c = this_cpu();
+    c->irq_nest++;
     apic_eoi(); /* ack first: handlers run with interrupts off, and a context switch may follow */
 
     irq_handler_t h = irq_handlers[f->vector];
@@ -146,7 +158,17 @@ void interrupt_dispatch(struct interrupt_frame *f)
             printk("unexpected interrupt, vector %lu\n", (unsigned long)f->vector);
     }
 
-    irq_depth--;
-    if (irq_depth == 0 && need_resched)
+    /* A reschedule may switch threads: afterwards `c` can be another CPU, so look it up again. */
+    c = this_cpu();
+    c->irq_nest--;
+    if (c->irq_nest == 0 && c->resched)
         sched_irq_exit();
+}
+
+/* Called by isr_common with the frame it is about to return through (possibly a different
+ * thread's after a reschedule): drop the lock if that frame resumes user mode or the idle wait. */
+void interrupt_exit(struct interrupt_frame *f)
+{
+    if (smp_frame_unlocked(f->cs, f->rip))
+        bkl_unlock();
 }

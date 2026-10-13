@@ -20,9 +20,6 @@
 
 extern void syscall_entry(void);
 
-/* Kernel stack of the running thread; maintained by sched_switch_hook(). */
-uint64_t syscall_kstack_top;
-
 static bool smep_on, smap_on;
 
 void syscall_init(void)

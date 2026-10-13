@@ -8,19 +8,21 @@
 
 bits 64
 extern syscall_dispatch
-extern syscall_kstack_top
+extern bkl_lock
+extern bkl_unlock
 
-section .bss align=8
-user_rsp_tmp: resq 1
+CPU_KSTACK_TOP equ 8        ; offsets into struct cpu (percpu.h)
+CPU_USER_RSP   equ 16
 
 section .text progbits alloc exec nowrite align=16
 global syscall_entry
 syscall_entry:
-    mov [rel user_rsp_tmp], rsp
-    mov rsp, [rel syscall_kstack_top]
+    swapgs
+    mov [gs:CPU_USER_RSP], rsp
+    mov rsp, [gs:CPU_KSTACK_TOP]
 
     push qword 0x23             ; ss  (USER_DS)
-    push qword [rel user_rsp_tmp]
+    push qword [gs:CPU_USER_RSP]
     push r11                    ; rflags
     push qword 0x2B             ; cs  (USER_CS)
     push rcx                    ; rip
@@ -43,10 +45,12 @@ syscall_entry:
     push r15
 
     cld
+    call bkl_lock               ; kernel code runs under the big kernel lock
     mov rdi, rsp
     sti
     call syscall_dispatch
     cli
+    call bkl_unlock             ; we always leave through user mode
 
     pop r15
     pop r14
@@ -64,4 +68,5 @@ syscall_entry:
     pop rbx
     pop rax
     add rsp, 16
+    swapgs
     iretq

@@ -33,6 +33,7 @@ mb2_end:
 section .boot.text progbits alloc exec nowrite align=16
 bits 32
 global _start
+global boot_pml4
 _start:
     cli
     mov esp, boot_stack_top
@@ -77,10 +78,10 @@ _start:
     ; PML4[511] -> PDPT_HIGH  (higher half, 0xFFFFFFFF80000000)
     mov eax, pdpt_low
     or eax, 0x3
-    mov [pml4], eax
+    mov [boot_pml4], eax
     mov eax, pdpt_high
     or eax, 0x3
-    mov [pml4 + 511 * 8], eax
+    mov [boot_pml4 + 511 * 8], eax
 
     ; Both PDPTs point at the same PD that maps physical 0..1 GiB with 2 MiB pages.
     mov eax, pd
@@ -104,7 +105,7 @@ _start:
     or eax, 1 << 5                      ; PAE
     mov cr4, eax
 
-    mov eax, pml4
+    mov eax, boot_pml4
     mov cr3, eax
 
     mov ecx, 0xC0000080                 ; EFER
@@ -178,7 +179,7 @@ gdt64_ptr:
 
 section .boot.bss nobits alloc noexec write align=4096
 align 4096
-pml4:       resb 4096
+boot_pml4:       resb 4096
 pdpt_low:   resb 4096
 pdpt_high:  resb 4096
 pd:         resb 4096
