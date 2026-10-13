@@ -191,6 +191,11 @@ static inline long netinfo(struct abi_netinfo *ni)
 {
     return syscall3(SYS_NETINFO, (long)ni, 0, 0);
 }
+static inline long cpuinfo(struct abi_cpuinfo *ci)
+{
+    return syscall3(SYS_CPUINFO, (long)ci, 0, 0);
+}
+
 static inline long ping(uint32_t ip, unsigned timeout_ms, unsigned seq)
 {
     return syscall3(SYS_PING, (long)ip, timeout_ms, seq);

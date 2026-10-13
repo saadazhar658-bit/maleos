@@ -237,6 +237,7 @@ static const struct sig sigs[SYS_COUNT] = {
     [SYS_CONNECT] = {{K_FD, K_SADDR, K_NONE}},     [SYS_SENDTO] = {{K_FD, K_DGRAM, K_NONE}},
     [SYS_RECVFROM] = {{K_FD, K_DGRAM, K_NONE}},    [SYS_SOCKCTL] = {{K_FD, K_SOCKOP, K_SMALL}},
     [SYS_NETINFO] = {{K_PTR, K_NONE, K_NONE}},     [SYS_PING] = {{K_PINGIP, K_PINGTO, K_SMALL}},
+    [SYS_CPUINFO] = {{K_PTR, K_NONE, K_NONE}},
 };
 
 static int usable(long nr)
