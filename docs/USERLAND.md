@@ -48,6 +48,25 @@ Accepts static x86-64 `ET_EXEC` files only. Rules: at most 16 program headers, n
 
 `user/test` is installed in `/tests` and used by the self-test.
 
+## Pipes and descriptor sharing (Phase 8a)
+`SYS_PIPE` returns a read end and a write end (4 KiB buffer, 32 pipes). Reads block until data
+arrives and return 0 once every write end is closed; writes block while the buffer is full and
+fail with `EPIPE` once every read end is closed. `SYS_DUP` / `SYS_DUP2` copy any descriptor
+(console, pipe, file, socket). Open files and sockets are reference-counted in `process.c`
+(pipes count their own ends), so the object is closed when the last descriptor goes. Copies
+share one file offset.
+
+`SYS_SPAWN` takes `SPAWN_STDIN_FD` / `SPAWN_STDOUT_FD` in `abi_spawn_attr.flags`: the child's
+descriptor 0 or 1 becomes a copy of the named parent descriptor. The parent must close its own
+copies afterwards or the pipe never reaches end of file. The shell does this for `a | b | c`
+(the last stage may also redirect with `>`). Built-ins cannot be used in a pipeline.
+
+`abi_spawn_attr.stdin_path` opens a file read-only as the child's descriptor 0 (exclusive with
+`SPAWN_STDIN_FD`). The shell uses it for `cmd < file`; `<`, `>` and `>>` may appear anywhere in a
+command and a bad redirection is a syntax error.
+
+`wc`, `grep` (plain substring) and `head` read standard input, so they work at the end of a pipe.
+
 ## Testing
 
 | Test | What it covers |
@@ -60,8 +79,8 @@ Accepts static x86-64 `ET_EXEC` files only. Rules: at most 16 program headers, n
 ## Limitations
 
 - One CPU. No FPU/SSE state is saved, so user code is built with `-mno-sse`.
-- Static `ET_EXEC` only: no dynamic linking, `fork`/`exec`, pipes, signals or `kill`.
-- The per-process fd table maps onto the global VFS fd table (61 slots); no `dup` or fd sharing.
+- Static `ET_EXEC` only: no dynamic linking, `fork`/`exec`, signals or `kill`.
+- The per-process fd table maps onto the global VFS fd table (61 slots); descriptors can be duplicated and inherited by children.
 - The cwd is textual, so `..` and symlink handling in relative paths is approximate.
 - A write that crosses the end of a user mapping returns the bytes written so far; a read returns `-EFAULT`.
 - No priority inheritance; ATA/AHCI are polled; ext2 is read-only.
