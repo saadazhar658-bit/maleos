@@ -100,7 +100,10 @@ struct stat {
 #define SYS_NETINFO 37   /* (struct abi_netinfo *) */
 #define SYS_PING 38      /* (ip, timeout_ms, seq) -> round-trip time in ms */
 #define SYS_CPUINFO 39   /* (struct abi_cpuinfo *) */
-#define SYS_COUNT 40
+#define SYS_PIPE 40      /* (int fds[2]) fds[0] = read end, fds[1] = write end */
+#define SYS_DUP 41       /* (fd) -> lowest free descriptor >= 3 */
+#define SYS_DUP2 42      /* (old, new) -> new; closes new first; console and pipes only */
+#define SYS_COUNT 43
 #define ABI_RANDOM_MAX 256
 
 #define SOCK_STREAM 1
@@ -152,10 +155,16 @@ struct abi_cpuinfo {
 #define EXIT_SIGFPE 136
 #define EXIT_SIGSEGV 139
 
+#define SPAWN_STDIN_FD 1  /* the child's fd 0 becomes a copy of the parent's stdin_fd */
+#define SPAWN_STDOUT_FD 2 /* the child's fd 1 becomes a copy of the parent's stdout_fd */
+
 struct abi_spawn_attr {
     const char *stdout_path; /* NULL: the console. Otherwise opened as the child's fd 1 */
     int32_t stdout_flags;    /* O_TRUNC or O_APPEND (O_WRONLY|O_CREAT are implied) */
-    int32_t reserved;
+    int32_t flags;           /* SPAWN_* bits; stdout_path and SPAWN_STDOUT_FD are exclusive */
+    int32_t stdin_fd;
+    int32_t stdout_fd;
+    const char *stdin_path; /* NULL: the console. Otherwise opened read-only as the child's fd 0 */
 };
 
 enum { PROC_RUNNING = 1, PROC_ZOMBIE = 2 };

@@ -23,11 +23,13 @@
 #define PROC_HEAP_PAGES 2048                 /* sbrk limit: 8 MiB */
 #define ELF_MAX_SIZE (4u << 20)
 
-enum fd_kind { FD_FREE = 0, FD_CONSOLE, FD_VFS, FD_SOCK };
+enum fd_kind { FD_FREE = 0, FD_CONSOLE, FD_VFS, FD_SOCK, FD_PIPE };
 
 struct pfile {
     enum fd_kind kind;
-    int vfs_fd; /* index in the global VFS file table (FD_VFS) or socket table (FD_SOCK) */
+    int vfs_fd; /* index in the global VFS file table (FD_VFS), socket table (FD_SOCK) or pipe table
+                 */
+    int end;    /* FD_PIPE: PIPE_END_READ or PIPE_END_WRITE */
 };
 
 struct process {
@@ -78,6 +80,15 @@ int process_sbrk(struct process *p, int64_t increment, uint64_t *old_brk);
 
 int process_fd_install(struct process *p, enum fd_kind kind, int vfs_fd);
 struct pfile *process_fd(struct process *p, int fd);
+
+/* Descriptor duplication: all kinds can be shared (files, sockets and pipe ends are counted). */
+int process_fd_dup_into(struct pfile *dst, const struct pfile *src); /* dst must be free */
+void process_fd_release(struct pfile *pf);                           /* close and free */
+
+/* Like process_spawn, but the child's descriptor 0 and/or 1 are copies of `in` / `out`. */
+int process_spawn_fds(const char *path, const char *const *argv, int argc, const char *stdout_path,
+                      int stdout_flags, const char *cwd, int ppid, const struct pfile *in,
+                      const struct pfile *out, const char *stdin_path);
 
 int process_count(void);
 int process_info(struct abi_procinfo *out, int max);
