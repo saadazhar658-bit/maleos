@@ -6,6 +6,7 @@
 #include "arch/syscall.h"
 #include "fs/vfs.h"
 #include "kernel/errno.h"
+#include "kernel/pipe.h"
 #include "kernel/printk.h"
 #include "kernel/random.h"
 #include "kernel/spinlock.h"
@@ -187,12 +188,30 @@ int process_sbrk(struct process *p, int64_t inc, uint64_t *old_brk)
 
 /* ---------- descriptors ---------- */
 
+/*
+ * Several descriptors (dup, inheritance by a child) may refer to one open file or socket. The
+ * VFS and socket tables know nothing about that, so the number of descriptors per object is
+ * counted here; the object is closed when the last descriptor goes. Pipes count their own ends.
+ */
+static uint16_t vfs_refs[VFS_MAX_FDS];
+static uint16_t sock_refs[SOCK_MAX];
+
+/* A freshly created object gets its first descriptor. */
+static void fobj_first_ref(enum fd_kind kind, int obj)
+{
+    if (kind == FD_VFS && obj >= 0 && obj < VFS_MAX_FDS)
+        vfs_refs[obj] = 1;
+    else if (kind == FD_SOCK && obj >= 0 && obj < SOCK_MAX)
+        sock_refs[obj] = 1;
+}
+
 int process_fd_install(struct process *p, enum fd_kind kind, int vfs_fd)
 {
     for (int i = 3; i < PROC_FDS; i++) {
         if (p->fds[i].kind == FD_FREE) {
             p->fds[i].kind = kind;
             p->fds[i].vfs_fd = vfs_fd;
+            fobj_first_ref(kind, vfs_fd);
             return i;
         }
     }
@@ -206,15 +225,45 @@ struct pfile *process_fd(struct process *p, int fd)
     return &p->fds[fd];
 }
 
+int process_fd_dup_into(struct pfile *dst, const struct pfile *src)
+{
+    switch (src->kind) {
+    case FD_CONSOLE:
+        break;
+    case FD_PIPE:
+        pipe_ref(src->vfs_fd, src->end);
+        break;
+    case FD_VFS:
+        vfs_refs[src->vfs_fd]++;
+        break;
+    case FD_SOCK:
+        sock_refs[src->vfs_fd]++;
+        break;
+    default:
+        return -EBADF;
+    }
+    *dst = *src;
+    return 0;
+}
+
+void process_fd_release(struct pfile *pf)
+{
+    if (pf->kind == FD_VFS) {
+        if (--vfs_refs[pf->vfs_fd] == 0)
+            vfs_close(pf->vfs_fd);
+    } else if (pf->kind == FD_SOCK) {
+        if (--sock_refs[pf->vfs_fd] == 0)
+            sock_close(pf->vfs_fd);
+    } else if (pf->kind == FD_PIPE) {
+        pipe_close(pf->vfs_fd, pf->end);
+    }
+    pf->kind = FD_FREE;
+}
+
 static void close_all_fds(struct process *p)
 {
-    for (int i = 0; i < PROC_FDS; i++) {
-        if (p->fds[i].kind == FD_VFS)
-            vfs_close(p->fds[i].vfs_fd);
-        else if (p->fds[i].kind == FD_SOCK)
-            sock_close(p->fds[i].vfs_fd);
-        p->fds[i].kind = FD_FREE;
-    }
+    for (int i = 0; i < PROC_FDS; i++)
+        process_fd_release(&p->fds[i]);
 }
 
 /* ---------- creation ---------- */
@@ -343,6 +392,14 @@ int process_launch(struct process *p)
 int process_spawn(const char *path, const char *const *argv, int argc, const char *stdout_path,
                   int stdout_flags, const char *cwd, int ppid)
 {
+    return process_spawn_fds(path, argv, argc, stdout_path, stdout_flags, cwd, ppid, NULL, NULL,
+                             NULL);
+}
+
+int process_spawn_fds(const char *path, const char *const *argv, int argc, const char *stdout_path,
+                      int stdout_flags, const char *cwd, int ppid, const struct pfile *in,
+                      const struct pfile *out, const char *stdin_path)
+{
     struct stat st;
     int rc = vfs_stat(path, &st);
     if (rc < 0)
@@ -377,6 +434,38 @@ int process_spawn(const char *path, const char *const *argv, int argc, const cha
         }
         p->fds[1].kind = FD_VFS;
         p->fds[1].vfs_fd = gfd;
+        fobj_first_ref(FD_VFS, gfd);
+    }
+
+    if (stdin_path) {
+        int gfd = vfs_open(stdin_path, O_RDONLY);
+        if (gfd < 0) {
+            close_all_fds(p);
+            proc_free(p);
+            return gfd;
+        }
+        p->fds[0].kind = FD_VFS;
+        p->fds[0].vfs_fd = gfd;
+        fobj_first_ref(FD_VFS, gfd);
+    }
+
+    /* Descriptors 0 and 1 may be inherited from the parent (console or pipe ends). */
+    if (in) {
+        rc = process_fd_dup_into(&p->fds[0], in);
+        if (rc < 0) {
+            close_all_fds(p);
+            proc_free(p);
+            return rc;
+        }
+    }
+    if (out) {
+        process_fd_release(&p->fds[1]);
+        rc = process_fd_dup_into(&p->fds[1], out);
+        if (rc < 0) {
+            close_all_fds(p);
+            proc_free(p);
+            return rc;
+        }
     }
 
     rc = process_launch(p);

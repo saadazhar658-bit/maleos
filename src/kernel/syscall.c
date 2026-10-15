@@ -7,6 +7,7 @@
 #include "fs/vfs.h"
 #include "kernel/console.h"
 #include "kernel/errno.h"
+#include "kernel/pipe.h"
 #include "kernel/printk.h"
 #include "kernel/process.h"
 #include "kernel/random.h"
@@ -112,6 +113,13 @@ static sysret sys_write(struct process *p, int fd, uint64_t ubuf, uint64_t len)
             if (w < 0)
                 return done ? (sysret)done : w;
             done += (uint64_t)w;
+        } else if (pf->kind == FD_PIPE) {
+            if (pf->end != PIPE_END_WRITE)
+                return done ? (sysret)done : -EBADF;
+            int64_t w = pipe_write(pf->vfs_fd, buf, chunk);
+            if (w < 0)
+                return done ? (sysret)done : w;
+            done += (uint64_t)w;
         } else {
             int64_t w = vfs_write(pf->vfs_fd, buf, chunk);
             if (w < 0)
@@ -140,6 +148,8 @@ static sysret sys_read(struct process *p, int fd, uint64_t ubuf, uint64_t len)
             r = console_read(buf, chunk);
         else if (pf->kind == FD_SOCK)
             r = sock_recv(pf->vfs_fd, buf, chunk, NULL, NULL);
+        else if (pf->kind == FD_PIPE)
+            r = pf->end == PIPE_END_READ ? pipe_read(pf->vfs_fd, buf, chunk) : -EBADF;
         else
             r = vfs_read(pf->vfs_fd, buf, chunk);
         if (r < 0)
@@ -150,7 +160,8 @@ static sysret sys_read(struct process *p, int fd, uint64_t ubuf, uint64_t len)
         if (rc < 0)
             return done ? (sysret)done : rc;
         done += (uint64_t)r;
-        if (pf->kind == FD_CONSOLE || pf->kind == FD_SOCK || (size_t)r < chunk)
+        if (pf->kind == FD_CONSOLE || pf->kind == FD_SOCK || pf->kind == FD_PIPE ||
+            (size_t)r < chunk)
             break; /* a terminal or socket read returns what is available */
     }
     return (sysret)done;
@@ -178,12 +189,73 @@ static sysret sys_close(struct process *p, int fd)
     struct pfile *pf = process_fd(p, fd);
     if (!pf)
         return -EBADF;
-    if (pf->kind == FD_VFS)
-        vfs_close(pf->vfs_fd);
-    else if (pf->kind == FD_SOCK)
-        sock_close(pf->vfs_fd);
-    pf->kind = FD_FREE;
+    process_fd_release(pf);
     return 0;
+}
+
+static sysret sys_pipe(struct process *p, uint64_t ufds)
+{
+    int fds[2];
+    if (!uspace_writable(p->pml4, ufds, sizeof(fds)))
+        return -EFAULT;
+    int id = pipe_create();
+    if (id < 0)
+        return id;
+    int r = process_fd_install(p, FD_PIPE, id);
+    if (r < 0) {
+        pipe_close(id, PIPE_END_READ);
+        pipe_close(id, PIPE_END_WRITE);
+        return r;
+    }
+    p->fds[r].end = PIPE_END_READ;
+    int w = process_fd_install(p, FD_PIPE, id);
+    if (w < 0) {
+        process_fd_release(&p->fds[r]);
+        pipe_close(id, PIPE_END_WRITE);
+        return w;
+    }
+    p->fds[w].end = PIPE_END_WRITE;
+    fds[0] = r;
+    fds[1] = w;
+    int rc = uspace_copy_out(p->pml4, ufds, fds, sizeof(fds));
+    if (rc < 0) {
+        process_fd_release(&p->fds[r]);
+        process_fd_release(&p->fds[w]);
+        return rc;
+    }
+    return 0;
+}
+
+static sysret sys_dup(struct process *p, int fd)
+{
+    struct pfile *src = process_fd(p, fd);
+    if (!src)
+        return -EBADF;
+    for (int i = 3; i < PROC_FDS; i++) {
+        if (p->fds[i].kind == FD_FREE) {
+            int rc = process_fd_dup_into(&p->fds[i], src);
+            return rc < 0 ? rc : i;
+        }
+    }
+    return -EMFILE;
+}
+
+static sysret sys_dup2(struct process *p, int oldfd, int newfd)
+{
+    struct pfile *src = process_fd(p, oldfd);
+    if (!src)
+        return -EBADF;
+    if (newfd < 0 || newfd >= PROC_FDS)
+        return -EBADF;
+    if (oldfd == newfd)
+        return newfd;
+    struct pfile copy;
+    int rc = process_fd_dup_into(&copy, src); /* take the new reference before dropping the old */
+    if (rc < 0)
+        return rc;
+    process_fd_release(&p->fds[newfd]);
+    p->fds[newfd] = copy;
+    return newfd;
 }
 
 static struct pfile *vfs_file(struct process *p, int fd)
@@ -275,6 +347,9 @@ static sysret sys_spawn(struct process *p, uint64_t upath, uint64_t uargv, uint6
     char out_path[VFS_PATH_MAX];
     const char *out = NULL;
     int out_flags = 0;
+    const struct pfile *in_pf = NULL, *out_pf = NULL;
+    char in_path[VFS_PATH_MAX];
+    const char *in_file = NULL;
     if (uattr) {
         struct abi_spawn_attr attr;
         rc = uspace_copy_in(p->pml4, &attr, uattr, sizeof(attr));
@@ -282,6 +357,28 @@ static sysret sys_spawn(struct process *p, uint64_t upath, uint64_t uargv, uint6
             return rc;
         if (attr.stdout_flags & ~(O_TRUNC | O_APPEND))
             return -EINVAL;
+        if (attr.flags & ~(SPAWN_STDIN_FD | SPAWN_STDOUT_FD))
+            return -EINVAL;
+        if ((attr.flags & SPAWN_STDOUT_FD) && attr.stdout_path)
+            return -EINVAL;
+        if ((attr.flags & SPAWN_STDIN_FD) && attr.stdin_path)
+            return -EINVAL;
+        if (attr.stdin_path) {
+            rc = get_path(p, (uint64_t)attr.stdin_path, in_path);
+            if (rc < 0)
+                return rc;
+            in_file = in_path;
+        }
+        if (attr.flags & SPAWN_STDIN_FD) {
+            in_pf = process_fd(p, attr.stdin_fd);
+            if (!in_pf)
+                return -EBADF;
+        }
+        if (attr.flags & SPAWN_STDOUT_FD) {
+            out_pf = process_fd(p, attr.stdout_fd);
+            if (!out_pf)
+                return -EBADF;
+        }
         if (attr.stdout_path) {
             rc = get_path(p, (uint64_t)attr.stdout_path, out_path);
             if (rc < 0)
@@ -290,7 +387,8 @@ static sysret sys_spawn(struct process *p, uint64_t upath, uint64_t uargv, uint6
             out_flags = attr.stdout_flags;
         }
     }
-    return process_spawn(path, argv, argc, out, out_flags, p->cwd, p->pid);
+    return process_spawn_fds(path, argv, argc, out, out_flags, p->cwd, p->pid, in_pf, out_pf,
+                             in_file);
 }
 
 static sysret sys_wait(struct process *p, int pid, uint64_t ustatus)
@@ -629,6 +727,12 @@ static sysret do_syscall(struct process *p, uint64_t nr, uint64_t a0, uint64_t a
         return sys_ping(a0, a1, a2);
     case SYS_CPUINFO:
         return sys_cpuinfo(p, a0);
+    case SYS_PIPE:
+        return sys_pipe(p, a0);
+    case SYS_DUP:
+        return sys_dup(p, ARG_INT(a0));
+    case SYS_DUP2:
+        return sys_dup2(p, ARG_INT(a0), ARG_INT(a1));
     case SYS_GETRANDOM:
         return sys_getrandom(p, a0, a1);
     case SYS_FTRUNCATE: {
