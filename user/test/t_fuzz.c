@@ -237,7 +237,8 @@ static const struct sig sigs[SYS_COUNT] = {
     [SYS_CONNECT] = {{K_FD, K_SADDR, K_NONE}},     [SYS_SENDTO] = {{K_FD, K_DGRAM, K_NONE}},
     [SYS_RECVFROM] = {{K_FD, K_DGRAM, K_NONE}},    [SYS_SOCKCTL] = {{K_FD, K_SOCKOP, K_SMALL}},
     [SYS_NETINFO] = {{K_PTR, K_NONE, K_NONE}},     [SYS_PING] = {{K_PINGIP, K_PINGTO, K_SMALL}},
-    [SYS_CPUINFO] = {{K_PTR, K_NONE, K_NONE}},
+    [SYS_CPUINFO] = {{K_PTR, K_NONE, K_NONE}},     [SYS_PIPE] = {{K_PTR, K_NONE, K_NONE}},
+    [SYS_DUP] = {{K_FD, K_NONE, K_NONE}},          [SYS_DUP2] = {{K_FD, K_FD, K_NONE}},
 };
 
 static int usable(long nr)
@@ -342,7 +343,14 @@ int main(int argc, char **argv)
             a[2] = 1; /* never turn off non-blocking: a blocked call would hang the fuzzer */
         if (nr == SYS_SPAWN)
             a[2] = 0;
+        static int pfd[2];
+        if (nr == SYS_PIPE) /* a pipe the fuzzer holds both ends of could block it forever */
+            a[0] = rnd() % 2 ? (long)pfd : gen_bad_ptr();
         long r = syscall3(nr, a[0], a[1], a[2]);
+        if (nr == SYS_PIPE && r >= 0) {
+            syscall3(SYS_CLOSE, pfd[0], 0, 0);
+            syscall3(SYS_CLOSE, pfd[1], 0, 0);
+        }
         if ((nr == SYS_SOCKET || nr == SYS_ACCEPT) && r >= 0)
             syscall3(SYS_SOCKCTL, r, SOCKCTL_NONBLOCK, 1);
         if (nr == SYS_SOCKCTL && a[1] == SOCKCTL_GETNAME && r >= 49152)

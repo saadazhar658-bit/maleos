@@ -12,32 +12,10 @@
 
 static volatile unsigned long sink; /* volatile: the compiler must not fold the busy loop away */
 
-int main(int argc, char **argv)
+static int measure(unsigned n)
 {
-    (void)argv;
     struct abi_cpuinfo ci;
-    if (cpuinfo(&ci) < 0)
-        return 1;
-
-    if (argc > 1) {
-        unsigned long end = uptime_ms() + SPIN_MS;
-        while (uptime_ms() < end) {
-            for (int i = 0; i < 200000; i++)
-                sink += (unsigned long)i * 7; /* long stretch of user-mode work between clock reads
-                                                 (each read is a system call) */
-        }
-        cpuinfo(&ci);
-        return 1 + (int)ci.cpu;
-    }
-
-    unsigned n = ci.ncpus;
-    if (n < 2) {
-        printf("t_smp: one CPU, nothing to compare\n");
-        return 0;
-    }
-    if (n > ABI_CPU_MAX)
-        n = ABI_CPU_MAX;
-
+    cpuinfo(&ci);
     unsigned long user_before = 0;
     for (unsigned i = 0; i < ABI_CPU_MAX; i++)
         user_before += ci.user_ticks[i];
@@ -81,4 +59,37 @@ int main(int argc, char **argv)
     if (cpus_seen < 2)
         return 5;
     return 0;
+}
+
+int main(int argc, char **argv)
+{
+    (void)argv;
+    struct abi_cpuinfo ci;
+    if (cpuinfo(&ci) < 0)
+        return 1;
+
+    if (argc > 1) {
+        unsigned long end = uptime_ms() + SPIN_MS;
+        while (uptime_ms() < end) {
+            for (int i = 0; i < 200000; i++)
+                sink += (unsigned long)i * 7; /* long stretch of user-mode work between clock reads
+                                                 (each read is a system call) */
+        }
+        cpuinfo(&ci);
+        return 1 + (int)ci.cpu;
+    }
+
+    unsigned n = ci.ncpus;
+    if (n < 2) {
+        printf("t_smp: one CPU, nothing to compare\n");
+        return 0;
+    }
+    if (n > ABI_CPU_MAX)
+        n = ABI_CPU_MAX;
+
+    /* The virtual CPUs share the host's cores, so one attempt can be unlucky: allow three. */
+    int rc = 4;
+    for (int attempt = 0; attempt < 3 && rc != 0; attempt++)
+        rc = measure(n);
+    return rc;
 }

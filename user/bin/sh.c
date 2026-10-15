@@ -3,7 +3,8 @@
 /*
  * A small shell. Built-ins: cd, pwd, exit, help, poweroff. Everything else is a program,
  * looked up as given (if it contains a '/') or in /bin. A trailing "> file" or ">> file"
- * redirects the program's standard output.
+ * redirects the standard output, "< file" reads standard input from a file, and "a | b | c"
+ * connects programs with pipes (input redirection applies to the first, output to the last).
  */
 
 #define LINE_MAX 256
@@ -39,12 +40,13 @@ static int split(char *line, char **tok)
 static void builtin_help(void)
 {
     puts("Built-ins:  cd [dir]  pwd  exit [n]  help  poweroff");
-    puts("Programs in /bin:  ls cat echo mkdir rmdir rm ln stat ps free uptime uname sleep hello");
-    puts("Redirect output with > file or >> file.  Ctrl-C cancels a line, Ctrl-D at an empty line "
-         "exits.");
+    puts("Programs in /bin:  ls cat echo mkdir rmdir rm ln stat ps free uptime uname sleep hello "
+         "wc grep head cpus");
+    puts("Redirect with < file, > file or >> file, chain programs with a | b.  Ctrl-C cancels a "
+         "line, Ctrl-D at an empty line exits.");
 }
 
-static void run(char **argv, const char *out, int out_flags)
+static void run(char **argv, const char *in, const char *out, int out_flags)
 {
     char path[VFS_PATH_MAX];
     if (strchr(argv[0], '/')) {
@@ -54,7 +56,7 @@ static void run(char **argv, const char *out, int out_flags)
         strlcpy(path + 5, argv[0], sizeof(path) - 5);
     }
 
-    struct abi_spawn_attr attr = {.stdout_path = out, .stdout_flags = out_flags};
+    struct abi_spawn_attr attr = {.stdout_path = out, .stdout_flags = out_flags, .stdin_path = in};
     long pid = spawn(path, argv, &attr);
     if (pid < 0) {
         dprintf(2, "sh: %s: %s\n", argv[0], strerror((int)-pid));
@@ -64,6 +66,75 @@ static void run(char **argv, const char *out, int out_flags)
     wait((int)pid, &status);
     if (status != 0)
         printf("[exit status %d]\n", status);
+}
+
+static void program_path(const char *name, char *path)
+{
+    if (strchr(name, '/')) {
+        strlcpy(path, name, VFS_PATH_MAX);
+    } else {
+        strlcpy(path, "/bin/", VFS_PATH_MAX);
+        strlcpy(path + 5, name, VFS_PATH_MAX - 5);
+    }
+}
+
+/* Run stages[0] | stages[1] | ... Each stage is a NULL-terminated argv inside `tok`. */
+static void run_pipeline(char ***stages, int nstages, const char *in, const char *out,
+                         int out_flags)
+{
+    long pids[MAX_TOKENS];
+    int started = 0;
+    int prev_read = -1;
+
+    for (int i = 0; i < nstages; i++) {
+        int fds[2] = {-1, -1};
+        int last = i == nstages - 1;
+        if (!last && pipe(fds) < 0) {
+            dprintf(2, "sh: cannot create a pipe\n");
+            break;
+        }
+
+        struct abi_spawn_attr attr = {0};
+        if (i == 0)
+            attr.stdin_path = in;
+        if (prev_read >= 0) {
+            attr.flags |= SPAWN_STDIN_FD;
+            attr.stdin_fd = prev_read;
+        }
+        if (!last) {
+            attr.flags |= SPAWN_STDOUT_FD;
+            attr.stdout_fd = fds[1];
+        } else if (out) {
+            attr.stdout_path = out;
+            attr.stdout_flags = out_flags;
+        }
+
+        char path[VFS_PATH_MAX];
+        program_path(stages[i][0], path);
+        long pid = spawn(path, stages[i], &attr);
+
+        /* The child has its own copies now; keeping ours would stop the pipe from ever ending. */
+        if (prev_read >= 0)
+            close(prev_read);
+        if (!last)
+            close(fds[1]);
+        prev_read = last ? -1 : fds[0];
+
+        if (pid < 0) {
+            dprintf(2, "sh: %s: %s\n", stages[i][0], strerror((int)-pid));
+            if (prev_read >= 0)
+                close(prev_read);
+            break;
+        }
+        pids[started++] = pid;
+    }
+
+    for (int i = 0; i < started; i++) {
+        int status = 0;
+        wait((int)pids[i], &status);
+        if (status != 0)
+            printf("[exit status %d]\n", status);
+    }
 }
 
 int main(void)
@@ -92,13 +163,62 @@ int main(void)
         if (n == 0)
             continue;
 
+        /* Redirections ("< file", "> file", ">> file") may appear anywhere; remove them. */
+        const char *in = NULL;
         const char *out = NULL;
         int out_flags = O_TRUNC;
-        if (n >= 3 && (strcmp(tok[n - 2], ">") == 0 || strcmp(tok[n - 2], ">>") == 0)) {
-            out = tok[n - 1];
-            out_flags = tok[n - 2][1] ? O_APPEND : O_TRUNC;
-            tok[n - 2] = NULL;
+        int bad_redirect = 0;
+        for (int i = 0; i < n;) {
+            int kind = strcmp(tok[i], "<") == 0    ? 1
+                       : strcmp(tok[i], ">") == 0  ? 2
+                       : strcmp(tok[i], ">>") == 0 ? 3
+                                                   : 0;
+            if (!kind) {
+                i++;
+                continue;
+            }
+            if (i + 1 >= n || strcmp(tok[i + 1], "|") == 0 || tok[i + 1][0] == '<' ||
+                tok[i + 1][0] == '>') {
+                bad_redirect = 1;
+                break;
+            }
+            if (kind == 1) {
+                in = tok[i + 1];
+            } else {
+                out = tok[i + 1];
+                out_flags = kind == 3 ? O_APPEND : O_TRUNC;
+            }
+            for (int j = i; j + 2 <= n; j++)
+                tok[j] = tok[j + 2]; /* also moves the final NULL */
             n -= 2;
+        }
+        if (bad_redirect || n == 0) {
+            puts("sh: syntax error in redirection");
+            continue;
+        }
+
+        /* Split at "|" words into pipeline stages. */
+        char **stages[MAX_TOKENS];
+        int nstages = 1;
+        int empty_stage = 0;
+        stages[0] = tok;
+        for (int i = 0; i < n; i++) {
+            if (strcmp(tok[i], "|") == 0) {
+                tok[i] = NULL;
+                if (i == 0 || tok[i - 1] == NULL || (i + 1 < n && strcmp(tok[i + 1], "|") == 0) ||
+                    i + 1 == n)
+                    empty_stage = 1;
+                stages[nstages++] = &tok[i + 1];
+            }
+        }
+        if (empty_stage) {
+            puts("sh: syntax error near |");
+            continue;
+        }
+
+        if (nstages > 1) {
+            run_pipeline(stages, nstages, in, out, out_flags);
+            continue;
         }
 
         if (strcmp(tok[0], "exit") == 0) {
@@ -114,7 +234,7 @@ int main(void)
         } else if (strcmp(tok[0], "poweroff") == 0) {
             poweroff();
         } else {
-            run(tok, out, out_flags);
+            run(tok, in, out, out_flags);
         }
     }
 }

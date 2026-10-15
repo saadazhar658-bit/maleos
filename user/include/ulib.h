@@ -191,6 +191,21 @@ static inline long netinfo(struct abi_netinfo *ni)
 {
     return syscall3(SYS_NETINFO, (long)ni, 0, 0);
 }
+static inline long pipe(int fds[2])
+{
+    return syscall3(SYS_PIPE, (long)fds, 0, 0);
+}
+
+static inline long dup(int fd)
+{
+    return syscall3(SYS_DUP, fd, 0, 0);
+}
+
+static inline long dup2(int oldfd, int newfd)
+{
+    return syscall3(SYS_DUP2, oldfd, newfd, 0);
+}
+
 static inline long cpuinfo(struct abi_cpuinfo *ci)
 {
     return syscall3(SYS_CPUINFO, (long)ci, 0, 0);
