@@ -91,7 +91,7 @@ flowchart LR
 
 > **Legend:** ⬜ planned · 🟨 in progress · ✅ done
 >
-> **Current status:** Phases 0–6 complete; Phase 7a (hardening), 7b (network stack) and 7c (SMP) done. Next up: documentation site and the v0.1.0 release; kernel KASLR is still open.
+> **Current status:** Phases 0–6 complete; Phase 7a (hardening), 7b (network stack) and 7c (SMP) done. v0.1.0 is ready to tag; kernel KASLR is still open.
 
 ### Phase 0 — Foundations & Tooling
 - ✅ Reproducible `x86_64-elf` cross-compiler setup (`scripts/build-toolchain.sh`)
@@ -153,7 +153,12 @@ flowchart LR
 - ✅ SMP: all CPUs run user code in parallel, kernel under one big lock (see docs/SMP.md)
 - ✅ Stack protector (kernel and user), random source, user-space ASLR (stack, heap)
 - ⬜ Kernel image KASLR (needs a relocatable kernel)
-- ⬜ Documentation site and a tagged `v0.1.0` release
+
+### Phase 8 — Userland growth *(in progress)*
+- ✅ 8a: pipes, `dup`/`dup2`, descriptor inheritance in `spawn`, shell pipelines (`a | b | c`), `wc`/`grep`/`head`
+- ✅ 8b-1: shared file descriptors (refcounted open files and sockets), `dup` on every kind, `<` redirection (`stdin_path`)
+- ⬜ 8b-2: fork/exec, signals
+- ✅ Documentation site (MkDocs, `mkdocs.yml`) and `v0.1.0` release notes (`CHANGELOG.md`); tag with `git tag v0.1.0 && git push --tags`
 
 ---
 
